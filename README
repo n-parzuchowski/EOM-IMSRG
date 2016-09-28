@@ -1,0 +1,179 @@
+HELLO, WELCOME TO THE EOM-IMSRG CODE: "EOM-IMSRG CODE"
+
+The purpose of this effort is to build an ab-initio framework from which one can compute nuclear excited
+state properties directly from the underlying chiral- NN and 3N forces. The method is the
+Equations of Motion In-Medium Similarity Renormalization Group method.
+
+This code has the power to calculate:
+ground state energies of closed shell nuclei and their isobaric neighbors.
+excited state energies of said nuclei
+scalar observables of said nuclei, such as radii or monopole moments.
+transtion strengths ( B(E1,E2,E3...), B(M1,M2,M3...) , B(GT) ) and electromagnetic multipole moments (dipole, quadrupole, octupole... )  
+
+THIS CODE WAS WRITTEN BY NATHAN M. PARZUCHOWSKI, A GRADUATE STUDENT AT MICHIGAN STATE UNIVERSITY.  nathan.parz@gmail.com 
+
+ELEMENTS OF THIS CODE WERE INSPIRED BY:
+Ragnar Stroberg (TRIUMF) 
+Titus Morris (ORNL)
+Heiko Hergert (MSU)
+Scott Bogner (MSU) 
+Gaute Hagen (ORNL)
+Gustav Jansen (ORNL)
+Morten Hjorth-Jensen (OSLO/MSU)
+
+I HAVE BORROWED AND MODIFIED CODE FROM:
+Thomas Kuo (SUNY STONY BROOK) [ ANGLIB.f ]
+Shampine and Gordan (adams_ode.f90)
+
+--------------------------------------------------------------------------------------------------------------
+DIRECTORY STRUCTURE 
+--------------------------------------------------------------------------------------------------------------
+I've tried to make this code function independent of the directory structure. If you do something strange, you
+may find some directory structure dependence. Hopefully I've weeded most of that out. You can avoid it all
+together by using the same directory structure as me.
+
+main/src/im-SRG
+main/output
+main/TBME_inputs
+main/sp_inputs
+main/inifiles
+
+You will need to declare environment variables to use this code.
+
+For example, you can add to your .bashrc file:
+
+"
+export PATH=$HOME/main/src/im-SRG:$PATH
+export IMSRG_INIFILES=$HOME/main/inifiles
+export IMSRG_ME_FILES=$HOME/main/TBME_input:/mnt/research/imsrg/alternate_ME_dir
+export IMSRG_SP_FILES=$HOME/main/sp_input
+export IMSRG_SCRATCH=$HOME/main/TBME_input
+export IMSRG_OPERATOR_DUMP=$HOME/main/TBME_input
+export IMSRG_OUTPUT=$HOME/main/output
+" 
+
+The addition to the path variable allows you to execute run_IMSRG in any directory.
+
+IMSRG_INIFILES is where the code will look for .ini and .eom files which specify the parameters of the calculation.
+
+IMSRG_ME_FILES is where interaction matrix elements are stored, you see here that I have an example where there are
+two directories which could have the desired files. The code will look through them both for the file requested.
+
+IMSRG_SP_FILES is where the single particle basis files are stored. (see below) 
+
+IMSRG_SCRATCH is scratch space to store massive files. The code will write checkpoint files here. 
+
+IMSRG_OPERATOR_DUMP is another place for storing really large files, which isn't necessarily scratch space. The code
+will store evolved operators and unitary transformations here. These are things you may want to keep around forever.
+The problem is that storing every transformation and operator will quickly eat your disk quota. For this reason, I
+typicallly set this env variable to scratch space as well.
+
+IMSRG_OUTPUT is where the code will write useful output in ASCII format.  
+
+The code will yell at you if these things aren't set.
+
+--------------------------------------------------------------------------------------------------------------
+MAKEFILES  
+--------------------------------------------------------------------------------------------------------------
+I've included two makefiles, one for gfortran and one for ifort.  Copy one of the two onto "makefile" which is
+set to gfortran by default. You may have to edit some elements of the makefiles, particularly if your cluster
+doesn't have arpack (see below). It shouldn't be too difficult, but you can contact me if it is. 
+
+--------------------------------------------------------------------------------------------------------------
+LIBRARIES YOU WILL NEED
+--------------------------------------------------------------------------------------------------------------
+LAPACK  ! linear algebra
+
+BLAS  ! matrix multiply 
+
+ZLIB  ! reading gzipped data 
+
+OPENMP  ! parallelism 
+
+ARPACK   ! arnoldi/lanczos routines
+This is included, in case your cluster doesn't have it. If you are running linux on your laptop, you should be
+able to install it with a package manager. If you have a mac, you should also be able to do this... in theory.
+
+There are instructions in the arpack zip file for compiling this library if you need to.
+You will need to make sure the linker looks for the arpack library in the correct directory.
+
+most of this stuff is included in the intel math kernel library, so the ifort makefile just links to that.
+
+--------------------------------------------------------------------------------------------------------------
+COMPILING
+--------------------------------------------------------------------------------------------------------------
+Hopefully you have all of the libraries installed and linked correctly. The gfortran makefile includes an
+example of how to link if all of these libraries are on your machine in some /lib/ directory documented in LD_LIBRARY_PATH.
+The ifort makefile includes an example of how to link to arpack in the event that you have to compile it locally.
+
+THE FORMER APPROACH IS RECOMMENDED.
+
+if all is well, just type "make" and magic will happen. .o files are stored in /bin and .mod files in /md
+
+an executable will be made for you: run_IMSRG
+
+--------------------------------------------------------------------------------------------------------------
+RUNNING THE CODE
+--------------------------------------------------------------------------------------------------------------
+This is where you get a segmentation fault.
+ 
+run_IMSRG has two optional arguments
+
+usage: ./run_IMSRG [<inputs.ini>] [<pbs_file>]
+
+inputs.ini can be named anything, but it has a rigid format, which matches that of "src/testcase.ini"
+You will see that many of the important parameters for an ab-initio nuclear structure calculation
+can be specified in this file.
+
+pbs_file is a batch file. You have to submit the name of the batch file as a command line argument when you want
+to do checkpointing. This way, the code will know what to resubmit when it writes a checkpoint. This option is rarely used.
+
+Typical usage:
+./run_IMSRG O22_n2loSAT_srg0000_eMax4_hw20.ini
+
+if you don't provide any arguments, the code will just run testcase.ini, which you should move to your IMSRG_INIFILES directory.
+
+
+There is one additional input file, which specifies the parameters of the EOM calculation
+
+src/standard.eom is our example. Unfortunately, at this time, the code can only work with one tensor operator at a time, but
+several excited states for multiple nuclei can be calculated simultaneously.
+
+I don't recommend that you edit testcase.ini and standard.eom whenever you want to run a different calculation. You should
+copy them and label them with the relevant information, leaving the defaults as working references to solve future problems with.
+
+--------------------------------------------------------------------------------------------------------------
+MORE INPUTS
+--------------------------------------------------------------------------------------------------------------
+Move src/hk4.sps to your SP_INPUT directory
+Move src/hole_scheme_hk to your SP_INPUT directory.
+Move src/VEM_500.me2j.gz to your ME_INPUT directory.
+
+----
+hk14.sps specifies the single particle basis, the format is
+
+label   n   l   2j  tz  energy
+
+the value of the "energy" doesn't matter for our purposes.
+I set the energy equal to 2n+l.
+
+----
+The code uses hole_scheme to determine what the reference state looks like. Don't change it.
+
+-----
+The me2j.gz file is gzipped, and you should leave it that way. You can view its contents with zmore or zless.
+The me2j format favors efficiency over human-readability, so you wont learn much there. You can dig into my code to
+figure out the actual format used here. Alternatively you could ask me, Ragnar or any German off the street.
+
+
+This code is not awesome enough to tell you exactly what you screwed up when you make an error with inputs, so you
+might have to go digging. The relevant subroutines are "read_main_input_file" in basic_IMSRG.f90 and "read_eom_file" in EOM_IMSRG.f90.
+Alternatively, you can just keep testcase.ini and standard.eom intact for reference, and you can compare them when things go haywire.
+
+
+
+---------------------------------------------------------------------------------------------------------------
+So much to write... let me know if I missed anything! 
+
+
+
