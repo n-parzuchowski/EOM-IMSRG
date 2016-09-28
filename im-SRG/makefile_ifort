@@ -1,0 +1,61 @@
+FC = ifort $(FFLAGS)  
+CXX = g++ $(CXXFLAGS) 
+
+p1 = run_IMSRG
+p2 = get_HO_energies
+p3 = truncate
+
+FFLAGS = -O3 -openmp -mkl -lz ####${LIB_ARPCK}
+TFLAGS = -g -O0 -check bounds -openmp -mkl
+CXXFLAGS = -std=c++11 -O3
+
+LIBS =  -L/user/local/lib/ -llapack -lblas -lz 
+LIB_ARPCK = /mnt/home/parzuch6/nuclear_IMSRG/src/ARPACK/libarpack_SUN4.a
+
+
+obfiles = bin
+modfiles = md
+
+F90SRC=$(wildcard *.f90)
+OBJ = $(patsubst %.f90, $(obfiles)/%.o, $(wildcard *.f90))  
+OBJ_f = $(patsubst %.f, $(obfiles)/%.o, $(wildcard *.f))  
+
+all: $(OBJ_f) $(OBJ)
+	${FC} $^ -o ${p1} ${LIB_ARPCK} -module $(modfiles) -lz
+
+$(OBJ): | $(obfiles)
+$(OBJ_f): | $(obfiles)
+
+$(obfiles):
+	@mkdir -p $@
+	@mkdir -p $(modfiles)
+
+$(obfiles)/%.o: %.f
+	${FC} -c -o $@ $< -module $(modfiles)
+
+$(obfiles)/%.o: %.f90
+	${FC} -c -o $@ $< -module $(modfiles)
+
+# nice gift from FEI to detect dependencies automatically
+dependencies.mk: $(F90SRC)
+	@for f in $^; do \
+	    printf "%s:" "$(obfiles)/$${f%.f90}.o"; \
+	    awk -v p="$(obfiles)/" \
+	        '$$1 == "use" && NF == 2 { printf " %s%s.o",p,$$2 }' "$$f"; \
+	    echo; \
+	done >$@.tmp; \
+	mv $@.tmp $@
+ 
+-include dependencies.mk
+
+clean:
+	rm -f ${p1} $
+	rm -f ${p2} $
+	rm -f ${p3} $
+	rm -f *.o
+	rm -f *.mod
+	rm -f *~
+	rm -rf $(obfiles)
+	rm -rf $(modfiles)
+	rm -f dependencies.mk
+
