@@ -3635,12 +3635,6 @@ subroutine read_main_input_file(input,H,htype,HF,method,EXcalc,COM,R2RMS,&
   read(22,*);read(22,*)
   read(22,*) excalc
   read(22,*)
-  read(22,*) Jtarg
-  read(22,*)
-  read(22,*) Ptarg
-  read(22,*)
-  read(22,*) valence
-  read(22,*) 
   read(22,*) com_int
   read(22,*)
   read(22,*) rrms_int 
@@ -3656,11 +3650,7 @@ subroutine read_main_input_file(input,H,htype,HF,method,EXcalc,COM,R2RMS,&
   read(22,*) writing_decoupled,reading_decoupled
   read(22,*) 
   read(22,*) writing_omega,reading_omega
-  
-  valence = adjustl(valence)
-  H%Jtarg = Jtarg
-  H%Ptarg = Ptarg
-  
+    
   if (method .ne. 1) then 
      writing_omega = .false. 
      reading_omega = .false. 
@@ -3673,19 +3663,6 @@ subroutine read_main_input_file(input,H,htype,HF,method,EXcalc,COM,R2RMS,&
   R2RMS = .false.
   if (rrms_int == 1) R2RMS = .true.
   
-  select case (trim(valence)) 
-     case ('0p') 
-        H%valcut = 6 
-     case ('1s0d')
-        H%valcut = 12
-     case ('1p0f')
-        H%valcut = 20 
-     case ( '2s1d0g') ! probably not needed 
-        H%valcut = 30
-     case default
-        stop 'valence space not listed in database, SEE basic_IMSRG.f90' 
-  end select 
-
   if (trim(adjustl(threebody_file))=='none') then 
      e3Max = 0
   end if 

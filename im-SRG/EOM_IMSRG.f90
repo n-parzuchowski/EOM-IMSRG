@@ -1320,13 +1320,19 @@ integer function read_eom_file(trs,mom,eom_states,jbas)
   character(2) :: op,init,fin
   integer :: ist,num_trans,num_mom,i,num_jpi,N ,uniq
   integer :: totstates
+  logical :: isthere
   
   N =jbas%total_orbits
   if (trim(INI_DIR) == './' ) then
-     open(unit=44,file='../../inifiles/'//trim(eomfile))
+     inquire(file=trim(INI_DIR)//trim(eomfile),exist=isthere)
+     if (isthere) then 
+        open(unit=44,file=trim(INI_DIR)//trim(eomfile))
+     else
+        open(unit=44,file='../../inifiles/'//trim(eomfile))        
+     end if
   else
      open(unit=44,file=trim(INI_DIR)//trim(eomfile))
-  end if 
+  end if
   read(44,*);read(44,*);read(44,*)
   ! read transition types
   read(44,*) num_jpi
