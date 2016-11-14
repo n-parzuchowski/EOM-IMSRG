@@ -13,18 +13,18 @@ transtion strengths ( B(E1,E2,E3...), B(M1,M2,M3...) , B(GT) ) and electromagnet
 THIS CODE WAS WRITTEN BY NATHAN M. PARZUCHOWSKI, A GRADUATE STUDENT AT MICHIGAN STATE UNIVERSITY.  nathan.parz@gmail.com 
 
 ELEMENTS OF THIS CODE WERE INSPIRED BY:
+Scott Bogner (MSU) 
 Ragnar Stroberg (TRIUMF) 
 Titus Morris (ORNL)
 Heiko Hergert (MSU)
-Scott Bogner (MSU) 
 Gaute Hagen (ORNL)
 Gustav Jansen (ORNL)
 Morten Hjorth-Jensen (OSLO/MSU)
 
 I HAVE BORROWED AND MODIFIED CODE FROM:
 Thomas Kuo (SUNY STONY BROOK) [ ANGLIB.f ]
-Shampine and Gordan (adams_ode.f90)
-
+Shampine and Gordan [adams_ode.f90]
+Ragnar Stroberg [three_body_routines.f90]
 --------------------------------------------------------------------------------------------------------------
 DIRECTORY STRUCTURE 
 --------------------------------------------------------------------------------------------------------------
@@ -125,7 +125,7 @@ inputs.ini can be named anything, but it has a rigid format, which matches that 
 You will see that many of the important parameters for an ab-initio nuclear structure calculation
 can be specified in this file.
 
-pbs_file is a batch file. You have to submit the name of the batch file as a command line argument when you want
+pbs_file is a portable batch system file. You have to submit the name of the pbs file as a command line argument when you want
 to do checkpointing. This way, the code will know what to resubmit when it writes a checkpoint. This option is rarely used.
 
 Typical usage:
