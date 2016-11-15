@@ -1,10 +1,12 @@
 # EOM OBSERVABLE INPUT FILE###
 ##############################
 # ENTER NUMBER OF UNIQUE J-PI configs
-2
+4
 # ENTER ALL JPi, dTz and number of states desired 
 2+,0,3
 3+,0,3
+1+,-1,3
+1+,1,3
 # ENTER OPERATOR (or 'none') (Only one at a time is feasible due to memory restrictions.) 
 E2
 # ENTER NUMBER OF UNIQUE TRANSTIONS (Calculated for all states of given quantum numbers) 

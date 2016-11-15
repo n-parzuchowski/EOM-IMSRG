@@ -136,7 +136,7 @@ subroutine calculate_isospin_states(J,PAR,dTZ,Numstates,HS,jbas,ladder_ops)
   end do
   
   print* 
-  write(*,'((A55),(I1),(A3),(I1),(A5),(I1))') 'EXECUTING EOM CALCULATION'// &
+  write(*,'((A55),(I1),(A3),(I1),(A5),(I2))') 'EXECUTING EOM CALCULATION'// &
        ' FOR EXCITED STATES: J=',J/2,' P=',PAR,' dTZ=',dTZ   
   print*
 
