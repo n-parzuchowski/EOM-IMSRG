@@ -8,11 +8,8 @@
 *.log
 *.a
 *.txt
-*.gz
 *.tar
-*.ini
 *.int
-*.sps
 *.bat
 pbs*
 *~

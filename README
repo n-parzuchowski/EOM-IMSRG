@@ -32,24 +32,24 @@ I've tried to make this code function independent of the directory structure. If
 may find some directory structure dependence. Hopefully I've weeded most of that out. You can avoid it all
 together by using the same directory structure as me.
 
-main/src/im-SRG
-main/output
-main/TBME_inputs
-main/sp_inputs
-main/inifiles
+EOM_IMSRG/src/im-SRG
+EOM_IMSRG/output
+EOM_IMSRG/TBME_inputs
+EOM_IMSRG/sp_inputs
+EOM_IMSRG/inifiles
 
 You will need to declare environment variables to use this code.
 
 For example, you can add to your .bashrc file:
 
 "
-export PATH=$HOME/main/src/im-SRG:$PATH
-export IMSRG_INIFILES=$HOME/main/inifiles
-export IMSRG_ME_FILES=$HOME/main/TBME_input:/mnt/research/imsrg/alternate_ME_dir
-export IMSRG_SP_FILES=$HOME/main/sp_input
-export IMSRG_SCRATCH=$HOME/main/TBME_input
-export IMSRG_OPERATOR_DUMP=$HOME/main/TBME_input
-export IMSRG_OUTPUT=$HOME/main/output
+export PATH=$HOME/EOM_IMSRG/src/im-SRG:$PATH
+export IMSRG_INIFILES=$HOME/EOM_IMSRG/inifiles
+export IMSRG_ME_FILES=$HOME/EOM_IMSRG/TBME_input:/mnt/research/imsrg/alternate_ME_dir
+export IMSRG_SP_FILES=$HOME/EOM_IMSRG/sp_input
+export IMSRG_SCRATCH=$HOME/EOM_IMSRG/TBME_input
+export IMSRG_OPERATOR_DUMP=$HOME/EOM_IMSRG/TBME_input
+export IMSRG_OUTPUT=$HOME/EOM_IMSRG/output
 " 
 
 The addition to the path variable allows you to execute run_IMSRG in any directory.

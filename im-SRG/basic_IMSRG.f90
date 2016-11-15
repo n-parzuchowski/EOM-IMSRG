@@ -3711,12 +3711,26 @@ subroutine read_main_input_file(input,H,htype,HF,method,EXcalc,COM,R2RMS,&
   SP_DIR = find_file('IMSRG_SP_FILES',trim(spfile)) 
 
   call getenv("IMSRG_OUTPUT",OUTPUT_DIR)
-  OUTPUT_DIR = trim(adjustl(OUTPUT_DIR))//'/'
+  if (trim(adjustl(OUTPUT_DIR))=='') then
+     OUTPUT_DIR = './'
+  else     
+     OUTPUT_DIR = trim(adjustl(OUTPUT_DIR))//'/'
+  end if
+
   call getenv("IMSRG_SCRATCH",scratch)
-  scratch = trim(adjustl(scratch))//'/'
-  call getenv("IMSRG_OPERATOR_DUMP",playplace)
-  playplace = trim(adjustl(playplace))//'/'
+  if (trim(adjustl(SCRATCH))=='') then
+     SCRATCH = './'
+  else
+     scratch = trim(adjustl(scratch))//'/'
+  end if
   
+  call getenv("IMSRG_OPERATOR_DUMP",playplace)
+
+  if (trim(adjustl(playplace))=='') then
+     playplace = './'
+  else
+     playplace = trim(adjustl(playplace))//'/'
+  end if
 end subroutine read_main_input_file
 !=======================================================  
 !=======================================================
@@ -4659,7 +4673,11 @@ character(500) function find_file( directory_name,file_name)
   ! directory_name = adjustl(directory_name)
   
   call GETENV(trim(directory_name),path)
-  path=adjustl(path)
+  if (trim(adjustl(path))=='') then
+     path = './'
+  else
+     path=adjustl(path)
+  end if
   
   istart = 1
   do while (.true.)
