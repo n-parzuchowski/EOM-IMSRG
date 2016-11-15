@@ -3695,16 +3695,6 @@ subroutine read_main_input_file(input,H,htype,HF,method,EXcalc,COM,R2RMS,&
      end if 
   end if 
   
-  inquire( file='../../hamiltonians/'//&
-       trim(adjustl(prefix))//'_bare' , exist = skip_setup )
-
-  if (EXcalc .ne. 0) then 
-  inquire( file='../../hamiltonians/'//&
-       trim(adjustl(prefix))//'_gs_decoup' , exist = skip_gs )
-  else 
-     skip_gs = .false.
-  end if
-
   ! figure out where the TBME and SP files are....
 
   TBME_DIR = find_file('IMSRG_ME_FILES',trim(intfile)) 

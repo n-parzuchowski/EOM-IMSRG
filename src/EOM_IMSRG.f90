@@ -1328,7 +1328,7 @@ integer function read_eom_file(trs,mom,eom_states,jbas)
      if (isthere) then 
         open(unit=44,file=trim(INI_DIR)//trim(eomfile))
      else
-        open(unit=44,file='../../inifiles/'//trim(eomfile))        
+        open(unit=44,file='../inifiles/'//trim(eomfile))        
      end if
   else
      open(unit=44,file=trim(INI_DIR)//trim(eomfile))

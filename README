@@ -32,7 +32,7 @@ I've tried to make this code function independent of the directory structure. If
 may find some directory structure dependence. Hopefully I've weeded most of that out. You can avoid it all
 together by using the same directory structure as me.
 
-EOM_IMSRG/src/im-SRG
+EOM_IMSRG/src
 EOM_IMSRG/output
 EOM_IMSRG/TBME_inputs
 EOM_IMSRG/sp_inputs
@@ -43,12 +43,12 @@ You will need to declare environment variables to use this code.
 For example, you can add to your .bashrc file:
 
 "
-export PATH=$HOME/EOM_IMSRG/src/im-SRG:$PATH
+export PATH=$HOME/EOM_IMSRG/src:$PATH
 export IMSRG_INIFILES=$HOME/EOM_IMSRG/inifiles
-export IMSRG_ME_FILES=$HOME/EOM_IMSRG/TBME_input:/mnt/research/imsrg/alternate_ME_dir
-export IMSRG_SP_FILES=$HOME/EOM_IMSRG/sp_input
-export IMSRG_SCRATCH=$HOME/EOM_IMSRG/TBME_input
-export IMSRG_OPERATOR_DUMP=$HOME/EOM_IMSRG/TBME_input
+export IMSRG_ME_FILES=$HOME/EOM_IMSRG/TBME_inputs:/mnt/path/to/alternate_ME_dir
+export IMSRG_SP_FILES=$HOME/EOM_IMSRG/sp_inputs
+export IMSRG_SCRATCH=$HOME/EOM_IMSRG/TBME_inputs
+export IMSRG_OPERATOR_DUMP=$HOME/EOM_IMSRG/TBME_inputs
 export IMSRG_OUTPUT=$HOME/EOM_IMSRG/output
 " 
 
@@ -91,13 +91,6 @@ ZLIB  ! reading gzipped data
 OPENMP  ! parallelism 
 
 ARPACK   ! arnoldi/lanczos routines
-This is included, in case your cluster doesn't have it. If you are running linux on your laptop, you should be
-able to install it with a package manager. If you have a mac, you should also be able to do this... in theory.
-
-There are instructions in the arpack zip file for compiling this library if you need to.
-You will need to make sure the linker looks for the arpack library in the correct directory.
-
-most of this stuff is included in the intel math kernel library, so the ifort makefile just links to that.
 
 --------------------------------------------------------------------------------------------------------------
 COMPILING
