@@ -2154,7 +2154,7 @@ subroutine EOM_observables( ladder_ops, iso_ops, O1,HS, Hcm, trans, mom, eom_sta
      print*, '============================================================================='
      print*, '        E_in                E_out         B('&
           //trans%oper//';'//trans%Jpi1(q)//' -> '//trans%Jpi2(q)//&
-          ')      B('//trans%oper//';'//trans%Jpi1(q)//' -> '//trans%Jpi2(q)//')' 
+          ')      B('//trans%oper//';'//trans%Jpi2(q)//' -> '//trans%Jpi1(q)//')' 
      print*, '============================================================================='
 
      Jin = 2* Jin

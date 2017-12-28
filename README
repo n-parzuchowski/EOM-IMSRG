@@ -107,14 +107,12 @@ an executable will be made for you: run_IMSRG
 
 --------------------------------------------------------------------------------------------------------------
 RUNNING THE CODE
---------------------------------------------------------------------------------------------------------------
-This is where you get a segmentation fault.
- 
+-------------------------------------------------------------------------------------------------------------- 
 run_IMSRG has two optional arguments
 
 usage: ./run_IMSRG [<inputs.ini>] [<pbs_file>]
 
-inputs.ini can be named anything, but it has a rigid format, which matches that of "src/testcase.ini"
+inputs.ini can be named anything, but it has a rigid format, which matches that of "inifiles/testcase.ini"
 You will see that many of the important parameters for an ab-initio nuclear structure calculation
 can be specified in this file.
 
@@ -124,23 +122,22 @@ to do checkpointing. This way, the code will know what to resubmit when it write
 Typical usage:
 ./run_IMSRG O22_n2loSAT_srg0000_eMax4_hw20.ini
 
-if you don't provide any arguments, the code will just run testcase.ini, which you should move to your IMSRG_INIFILES directory.
-
+if you don't provide any arguments, the code will just run testcase.ini, which you should have in your IMSRG_INIFILES directory.
 
 There is one additional input file, which specifies the parameters of the EOM calculation
 
-src/standard.eom is our example. Unfortunately, at this time, the code can only work with one tensor operator at a time, but
+"inifiles/O22.eom" is our example. Unfortunately, at this time, the code can only work with one tensor operator at a time, but
 several excited states for multiple nuclei can be calculated simultaneously.
 
-I don't recommend that you edit testcase.ini and standard.eom whenever you want to run a different calculation. You should
-copy them and label them with the relevant information, leaving the defaults as working references to solve future problems with.
+I don't recommend that you edit testcase.ini and O22.eom whenever you want to run a different calculation. You should
+copy them and label them with the relevant information, leaving the defaults as references to solve future problems with.
 
 --------------------------------------------------------------------------------------------------------------
 MORE INPUTS
 --------------------------------------------------------------------------------------------------------------
-Move src/hk4.sps to your SP_INPUT directory
-Move src/hole_scheme_hk to your SP_INPUT directory.
-Move src/VEM_500.me2j.gz to your ME_INPUT directory.
+hk4.sps in your SP_INPUT directory
+hole_scheme_hk in your SP_INPUT directory.
+sample_eMax08_hw24.me2j.gz in your  ME_INPUT directory.
 
 ----
 hk14.sps specifies the single particle basis, the format is
@@ -151,19 +148,16 @@ the value of the "energy" doesn't matter for our purposes.
 I set the energy equal to 2n+l.
 
 ----
-The code uses hole_scheme to determine what the reference state looks like. Don't change it.
+The code uses hole_scheme to determine what the reference state looks like. Don't change it, or it will fail. 
 
 -----
 The me2j.gz file is gzipped, and you should leave it that way. You can view its contents with zmore or zless.
 The me2j format favors efficiency over human-readability, so you wont learn much there. You can dig into my code to
 figure out the actual format used here. Alternatively you could ask me, Ragnar or any German off the street.
 
-
 This code is not awesome enough to tell you exactly what you screwed up when you make an error with inputs, so you
 might have to go digging. The relevant subroutines are "read_main_input_file" in basic_IMSRG.f90 and "read_eom_file" in EOM_IMSRG.f90.
 Alternatively, you can just keep testcase.ini and standard.eom intact for reference, and you can compare them when things go haywire.
-
-
 
 ---------------------------------------------------------------------------------------------------------------
 So much to write... let me know if I missed anything! 
