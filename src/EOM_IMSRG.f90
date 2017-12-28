@@ -412,9 +412,9 @@ subroutine LANCZOS_ISOSPIN_CHANGER(jbas,OP,Vecs,nev)
   ido = 0  ! status integer is 0 at start
   BMAT = 'I' ! standard eigenvalue problem (N for generalized) 
   which = 'SM' ! compute smallest eigenvalues in magnitude ('SA') is algebraic. 
-  tol = 0.0E+00 ! error tolerance? (wtf zero?) 
+  tol = 0.0E+00 ! error tolerance 
   info = 0
-  ncv = 5*nev ! number of lanczos vectors I guess
+  ncv = 5*nev ! number of lanczos vectors
   lworkl = ncv*(ncv+8) 
   allocate(V(N,NCV),workl(lworkl))
   LDV = N  
