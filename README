@@ -66,11 +66,11 @@ IMSRG_SCRATCH is scratch space to store massive files. The code will write check
 IMSRG_OPERATOR_DUMP is another place for storing really large files, which isn't necessarily scratch space. The code
 will store evolved operators and unitary transformations here. These are things you may want to keep around forever.
 The problem is that storing every transformation and operator will quickly eat your disk quota. For this reason, I
-typicallly set this env variable to scratch space as well.
+typically set this variable to the scratch space as well.
 
-IMSRG_OUTPUT is where the code will write useful output in ASCII format.  
+IMSRG_OUTPUT is where the code will write useful output in human-readable format.  
 
-The code will yell at you if these things aren't set.
+The code will complain if these things aren't set.
 
 --------------------------------------------------------------------------------------------------------------
 MAKEFILES  
