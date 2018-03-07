@@ -45,7 +45,7 @@ subroutine allocate_mono(monoSTOR,jbas)
    integer :: ja,jb,jc,jaa,jbb,jcc,II,JJ,jtot,Jab
    integer :: Jab_min,Jab_max,j_min,j_max,aux,blocks
    integer :: q,Tz,PAR,a,b,c,aa,bb,cc,items
-
+   ! i'm too lazy right now. 
    ! monopoles --- 
    
    lmax = maxval(jbas%ll) 
@@ -422,7 +422,7 @@ real(8) function overlap_3b(a1,b1,c1,Jab1,Tab1,a2,b2,c2,Jab2,Tab2,jtot,ttot,jbas
   end if 
 
   
-end function overlap_3b
+end function
 !====================================================================
 !====================================================================
 subroutine allocate_three_body_storage(jbas,jbx,store_3b,eMax,lMax)
@@ -681,6 +681,7 @@ subroutine allocate_three_body_storage(jbas,jbx,store_3b,eMax,lMax)
   store_3b%num_elems = elems_file
   elems = 0
   do q = 1, num_blocks     
+     if (store_3b%kets(q) .ne. store_3b%bras(q)) print*, '$#%#'
      NN = store_3b%kets(q) 
      elems = elems + (NN*NN+NN)/2
      allocate(store_3b%mat(q)%RR((NN*NN+NN)/2))
@@ -691,12 +692,11 @@ subroutine allocate_three_body_storage(jbas,jbx,store_3b,eMax,lMax)
   
   mem = mem/1024.d0/1024.d0/1024.d0
   print*, 'MEMORY OF 3 BODY STORAGE IS: ',mem,'GB' 
-
+!  print*, 'slots:', elems
 end subroutine allocate_three_body_storage
-!====================================================================
-!====================================================================
+
+ 
 real(8) function GetME_pn(Jab,Jde,jtot,a,b,c,d,e,f,STOR,jbas) 
-  ! get the matrix element in the pn formalism 
   implicit none 
   
   type(spd) :: jbas
@@ -737,11 +737,10 @@ real(8) function GetME_pn(Jab,Jde,jtot,a,b,c,d,e,f,STOR,jbas)
   
   GetME_pn = sm 
 end function GetME_pn
-!====================================================================
-!====================================================================  
+  
 subroutine SetME(Jab_in,Jde_in,jtot,Tab_in,Tde_in,ttot,a_in,b_in,c_in,d_in,e_in,f_in,V_in,STOR,jbas)
   ! here we accept pn basis indeces, but treat them as iso-spin coupled. 
-  ! e.g. 1==2, 3==4, 5==6 ...
+  ! e.g. 1==2, 3==4, 5==6 ...   
   implicit none 
   
   integer :: Jab_in,Jde_in,jtot,Tab_in,Tde_in,ttot,a_in,b_in,c_in,d_in,e_in,f_in
@@ -752,8 +751,7 @@ subroutine SetME(Jab_in,Jde_in,jtot,Tab_in,Tde_in,ttot,a_in,b_in,c_in,d_in,e_in,
   x = AddToME(Jab_in,Jde_in,jtot,Tab_in,Tde_in,ttot,a_in,b_in,c_in,d_in,e_in,f_in,V_in,STOR,jbas)
   !x is not important here
 end subroutine SetME
-!====================================================================
-!====================================================================
+
 real(8) function GetME(Jab_in,Jde_in,jtot,Tab_in,Tde_in,ttot,a_in,b_in,c_in,d_in,e_in,f_in,STOR,jbas) 
   ! here we accept pn basis indeces, but treat them as iso-spin coupled. 
   implicit none 
@@ -769,13 +767,10 @@ real(8) function GetME(Jab_in,Jde_in,jtot,Tab_in,Tde_in,ttot,a_in,b_in,c_in,d_in
 
   GetME = AddToME(Jab_i,Jde_i,jt,Tab_i,Tde_i,tt,a_i,b_i,c_i,d_i,e_i,f_i,0.d0,STOR,jbas) 
 end function GetME
-!====================================================================
-!====================================================================
   
 !!! These functions are ported from Ragnar Stroberg's code: 
 real(8) function &
 AddToME(Jab_in,Jde_in,jtot,Tab_in,Tde_in,ttot,a_in,b_in,c_in,d_in,e_in,f_in,V_in,STOR,jbas) 
-! this one finds the matrix element in storage, adds V_in to it and then returns the matrix element 
   implicit none 
 
   type(spd) :: jbas 
@@ -875,8 +870,7 @@ AddToME(Jab_in,Jde_in,jtot,Tab_in,Tde_in,ttot,a_in,b_in,c_in,d_in,e_in,f_in,V_in
               Ct_abc = Recoupling_Coef(abc_recoup,1,1,1,Tab_in,Tab,ttot) 
               do Tde= Tde_min,Tde_max,2
                  Ct_def = Recoupling_Coef(def_recoup,1,1,1,Tde_in,Tde,ttot)          
-
-                 ! again, indexing for speed... not intuitive at all...
+                
                  aux1 = (Jab-STOR%hashmap(x1)%Jij_start)/2 + 1  
                  aux2 = (Jde-STOR%hashmap(x2)%Jij_start)/2 + 1  
                  aux3 = (jtot - STOR%hashmap(x1)%jhalf_start(aux1))/2+1 & 
@@ -909,10 +903,10 @@ AddToME(Jab_in,Jde_in,jtot,Tab_in,Tde_in,ttot,a_in,b_in,c_in,d_in,e_in,f_in,V_in
         end if
      end do
   end do
-
+ ! end if 
   AddToME = V_out 
 
-end function AddToME
+end function 
 !=====================================================================================
 !=====================================================================================
 integer function SortOrbits(a_in,b_in,c_in,a,b,c) 
@@ -959,7 +953,7 @@ integer function SortOrbits(a_in,b_in,c_in,a,b,c)
 
   SortOrbits = recoupling_case 
   
-end function SortOrbits
+end function
 !=====================================================================================
 !=====================================================================================
 real(8) function Recoupling_Coef(recoup_case,ja,jb,jc,Jab_in,Jab,jtot)
@@ -999,11 +993,11 @@ real(8) function Recoupling_Coef(recoup_case,ja,jb,jc,Jab_in,Jab,jtot)
     end select
     
     Recoupling_Coef = coeff
-  end function Recoupling_Coef
+end function
 !==================================================================
 !==================================================================
 real(8) function iso_clebsch_halfhalf(T1,T2,T3,m1,m2,m3) 
-  ! dangerous, this does not check very many things. 
+  !dangerous, this does not check very many things. 
   ! don't actually use these for anything important. They aren't nice. 
   ! they are only used in the iso to pn conversion routines. 
   implicit none 
@@ -1028,7 +1022,7 @@ real(8) function iso_clebsch_halfhalf(T1,T2,T3,m1,m2,m3)
      end select
   end if
   
-end function iso_clebsch_halfhalf
+end function 
 !==================================================================
 !==================================================================
 real(8) function iso_clebsch_wholehalf(T1,T2,T3,m1,m2,m3) 
@@ -1080,7 +1074,7 @@ real(8) function iso_clebsch_wholehalf(T1,T2,T3,m1,m2,m3)
      end if
   end if
   
-end function iso_clebsch_wholehalf
+end function 
            
   
 end module

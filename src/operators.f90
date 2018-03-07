@@ -10,8 +10,50 @@ module operators
 contains
 !==================================================================  
 !==================================================================
+subroutine initialize_scalar_operator(name,Op,jbas)
+  implicit none
+
+  type(sq_op) :: Op
+  type(spd) :: jbas
+  character(10) :: name
+
+  ! you can add new scalar operators here. 
+  if (trim(name)=="rho21") then     
+     call  initialize_rho21_zerorange(Op,jbas)
+  else
+     write(*,*) "Operator named "//trim(name)//" not found. FAIL."
+     STOP
+  end if
+  
+end subroutine initialize_scalar_operator
+!==================================================================  
+!==================================================================
+subroutine write_scalar_operator(name,Op,jbas)
+  implicit none
+
+  type(sq_op) :: Op
+  type(spd) :: jbas
+  character(10) :: name
+
+  ! you can add new scalar operators here. 
+  if (trim(name)=="rho21") then
+     print*, 'SRC DENSITY:', Op%E0
+     
+     open(unit=81,file=trim(OUTPUT_DIR)//trim(prefix)//"_SRC_density.dat")
+     write(81,*) nint(Op%hospace), Op%eMax, Op%E0
+     close(81)
+     open(unit=81,file=trim(OUTPUT_DIR)//trim(prefix)//"_energy.dat")
+     write(81,*) nint(Op%hospace), Op%eMax, Op%E0
+     close(81)
+  else
+     write(*,*) "Operator named "//trim(name)//" not found. FAIL."
+     STOP "How did this not get caught in initialize_scalar_operator?"
+  end if
+  
+end subroutine write_scalar_operator
+!==================================================================  
+!==================================================================
 subroutine calculate_pipj(pp,jbas) 
-  ! fills the pipj matrix
   implicit none
   
   type(sq_op) :: pp
@@ -27,7 +69,7 @@ subroutine calculate_pipj(pp,jbas)
      mass = mass + jbas%con(a) *(jbas%jj(a)+1) 
   end do
 
-  call calculate_h0_harm_osc(pp%hospace,jbas,pp,4)
+  call calculate_h0_harm_osc(jbas,pp,4)
 
   do q = 1, pp%nblocks
      
@@ -66,7 +108,6 @@ end subroutine calculate_pipj
 !==================================================================  
 !==================================================================
 subroutine calculate_rirj(rr,jbas) 
-  !fills the rirj matrix
   implicit none
   
   type(sq_op) :: rr
@@ -85,7 +126,7 @@ subroutine calculate_rirj(rr,jbas)
   end do
   ! check if we are concerned with other operators
 
-  call calculate_h0_harm_osc(rr%hospace,jbas,rr,5)
+  call calculate_h0_harm_osc(jbas,rr,5)
      
   do q = 1, rr%nblocks
      
@@ -123,7 +164,6 @@ end subroutine calculate_rirj
 !=====================================================================================
 !=====================================================================================
 subroutine initialize_EM_operator(trs_type,rank,Op,zr,jbas,tcalc)
-  ! initialize electromagnetic transition operators
   implicit none
   
   type(spd) :: jbas
@@ -131,8 +171,7 @@ subroutine initialize_EM_operator(trs_type,rank,Op,zr,jbas,tcalc)
   character(1) :: trs_type,ranklab
   integer :: rank 
   logical :: tcalc
-  
-  tcalc = .true. 
+ 
   Select case (trs_type) 
      case ('E') ! ELECTRIC TRANSITION
          Op%rank = 2*rank
@@ -177,7 +216,6 @@ end subroutine initialize_EM_operator
 !=====================================================================================
 !=====================================================================================
 subroutine initialize_beta_operator(trs_type,dTz,Op,zr,jbas,tcalc)
-  ! gamow teller operators
   implicit none
   
   type(spd) :: jbas
@@ -187,7 +225,6 @@ subroutine initialize_beta_operator(trs_type,dTz,Op,zr,jbas,tcalc)
   character(1):: dTz 
   logical :: tcalc
   
-  tcalc = .true. 
   Select case (trs_type) 
      case ('E') ! ELECTRIC TRANSITION
         STOP 'Electromagnetic operators need to use type(sq_op) structure'        
@@ -217,8 +254,196 @@ subroutine initialize_beta_operator(trs_type,dTz,Op,zr,jbas,tcalc)
 end subroutine initialize_beta_operator
 !===================================================================
 !===================================================================
+subroutine initialize_TDA(TDA,jbas,Jtarget,PARtarget,cut) 
+  ! figure out how big the TDA matrix has to be
+  ! allocate it
+  ! uses full_sp_block_mat, just because it's got the right shape
+  implicit none 
+  
+  type(spd) :: jbas
+  type(full_sp_block_mat) :: TDA
+  integer :: JT,PI,Jmax,q,i,a,r,nh,np,ix,ax
+  integer :: Jtarget, PARtarget,cut
+ 
+  Jmax = jbas%Jtotal_max
+  nh = sum(jbas%con) 
+  np = jbas%total_orbits - nh 
+  TDA%blocks = 1   
+  
+  if (allocated(TDA%blkM)) then 
+     deallocate(TDA%blkM,TDA%map) 
+  end if 
+  
+  allocate(TDA%blkM(1))
+  allocate(TDA%map(1)) 
+  
+  q = 1
+  
+  !do PI = 0,1
+   !  do JT = 0,2*Jmax,2
+    
+  PI = PARtarget 
+  JT = Jtarget 
+      
+        r = 0
+        ! count the states
+        do ix = 1,nh
+           do ax = 1,np 
+              i =jbas%holes(ix) 
+              a =jbas%parts(ax)
+              if (a > cut) cycle 
+              if (i < 10) cycle
+              if (jbas%itzp(i) .ne. jbas%itzp(a) ) cycle ! cannot change from p to n
+            
+              if (.not. (triangle(jbas%jj(i),jbas%jj(a),JT))) cycle 
+              if (mod(jbas%ll(i)+jbas%ll(a),2) .ne. PI )  cycle ! technically l_a - l_i  
+              
+              r = r + 1 
+           end do 
+        end do 
+              
+        ! allocate
+        TDA%map(q) = r
+        allocate(TDA%blkM(q)%matrix(r,r)) 
+        allocate(TDA%blkM(q)%extra(10*r))
+        allocate(TDA%blkM(q)%eigval(r)) 
+        allocate(TDA%blkM(q)%labels(r,2)) 
+        allocate(TDA%blkM(q)%states(r))
+        TDA%blkM(q)%states = 0.d0
+        
+        ! fill the states
+        r = 0
+        do ix = 1,nh
+           do ax = 1,np 
+              i =jbas%holes(ix) 
+              a =jbas%parts(ax)              
+              if (a > cut) cycle 
+              if (i < 10) cycle
+              if (jbas%itzp(i) .ne. jbas%itzp(a) ) cycle ! cannot change from p to n
+            
+              if (.not. (triangle(jbas%jj(i),jbas%jj(a),JT))) cycle 
+              if (mod(jbas%ll(i)+jbas%ll(a),2) .ne. PI )  cycle ! technically l_a - l_i 
+              r = r + 1 
+              TDA%blkM(q)%labels(r,1) = i 
+              TDA%blkM(q)%labels(r,2) = a 
+           end do 
+        end do 
+        TDA%blkM(q)%lmda(1) = JT
+        TDA%blkM(q)%lmda(2) = PI 
+        TDA%blkM(q)%lmda(3) = 0 
+ !       q = q + 1
+ !    end do 
+ ! end do 
+
+       print*, TDA%blkM(1)%labels(:,1)
+       print*, TDA%blkM(1)%labels(:,2)
+end subroutine 
+!==========================================
+!==========================================
+subroutine calc_TDA(TDA,HS,HSCC,jbas) 
+  implicit none 
+  
+  type(spd) :: jbas
+  type(full_sp_block_mat) :: TDA
+  type(sq_op) :: HS 
+  type(cc_mat) :: HSCC
+  integer :: q,JT,r1,r2,a,b,i,j,x,g,NBindx,Rindx,q1,Tz,PAR,JTM
+  integer :: ji,jj,ja,jb,phase
+  
+  JTM = jbas%Jtotal_max
+  do q = 1, TDA%blocks
+     JT = TDA%blkM(q)%lmda(1) 
+     Tz = 0
+     PAR = TDA%blkM(q)%lmda(2)
+  
+     q1 = JT/2+1 + Tz*(JTM+1) + 2*PAR*(JTM+1)
+     
+     do r1 = 1, TDA%map(q) 
+        i = TDA%blkM(q)%labels(r1,1)
+        a = TDA%blkM(q)%labels(r1,2)
+        
+        ji = jbas%jj(i)
+        ja = jbas%jj(a) 
+        ! get CC index for this pair
+        x = CCindex(a,i,HS%Nsp)
+        g = 1
+        do while (HSCC%qmap(x)%Z(g) .ne. q1 )
+           g = g + 1
+        end do
+
+        NBindx = HSCC%nbmap(x)%Z(g) 
+           
+        do r2 = r1, TDA%map(q)
+           j = TDA%blkM(q)%labels(r2,1)
+           b = TDA%blkM(q)%labels(r2,2)
+           
+           jj = jbas%jj(j)
+           jb = jbas%jj(b)
+           phase = (-1)**((jj+jb)/2)
+           ! get CCindex for this pair
+           x = CCindex(b,j,HS%Nsp) 
+           g = 1
+           do while (HSCC%qmap(x)%Z(g) .ne. q1 )
+              g = g + 1
+           end do
+              
+           Rindx = HSCC%rmap(x)%Z(g)  
+           
+           ! one body piece
+           TDA%blkM(q)%matrix(r1,r2) = f_elem(a,b,HS,jbas) * &
+                kron_del(i,j) - f_elem(j,i,HS,jbas) * kron_del(a,b)
+           
+           ! two body piece
+!           TDA%blkM(q)%matrix(r1,r2) = TDA%blkM(q)%matrix(r1,r2) - &
+ !               Vcc(i,a,b,j,JT,HS,jbas)*(-1)**((ja+ji)/2) * &
+  !              (-1) ** ((JT)/2) /sqrt(JT+1.d0) 
+           
+           TDA%blkM(q)%matrix(r1,r2) = TDA%blkM(q)%matrix(r1,r2) - &
+                HSCC%CCX(q1)%X(Rindx,NBindx) * HSCC%herm * & !need scaling.
+                (-1) ** (JT/2) /sqrt(JT+1.d0) * phase  
+         
+           ! I have to account for the fact that the CCME are scaled by 
+           ! Sqrt[2J+1] * (-1)^(j_i + j_a) 
+        
+           ! hermiticity 
+           TDA%blkM(q)%matrix(r2,r1) = TDA%blkM(q)%matrix(r1,r2) 
+        end do 
+     end do 
+  end do 
+        
+end subroutine 
+!===================================================
+!===================================================
+subroutine TDA_expectation_value(TDA_HAM,TDA_OP) 
+  ! takes expectation values of TDA_OP for the eigenvectors defined in TDA_HAM
+  implicit none 
+  
+  type(full_sp_block_mat) :: TDA_HAM, TDA_OP,AUX  
+  integer :: q,dm,i 
+  
+  call duplicate_sp_mat(TDA_HAM,AUX) 
+ 
+  do q = 1, TDA_OP%blocks
+        
+     dm = TDA_OP%map(q)
+     if (dm == 0)  cycle
+     
+     ! transform operator into basis defined by TDA vectors
+     call dgemm('N','N',dm,dm,dm,al,TDA_OP%blkM(q)%matrix&
+          ,dm,TDA_HAM%blkM(q)%matrix,dm,bet,AUX%blkM(q)%matrix,dm) 
+     call dgemm('T','N',dm,dm,dm,al,TDA_HAM%blkM(q)%matrix&
+          ,dm,AUX%blkM(q)%matrix,dm,bet,TDA_OP%blkM(q)%matrix,dm)
+     
+     ! diagonal elements are the expectation values
+     do i = 1, dm 
+        TDA_OP%blkM(q)%eigval(i) = TDA_OP%blkM(q)%matrix(i,i) 
+     end do    
+     
+  end do
+
+end subroutine 
+!=========================================================
 subroutine initialize_rms_radius(rms,rr,jbas)
-  ! point nucleon charge radius
   implicit none 
   
   type(sq_op) :: rr, rms 
@@ -227,8 +452,10 @@ subroutine initialize_rms_radius(rms,rr,jbas)
   integer :: q,i
   
   mass_factor = 1.d0-1.d0/dfloat(rr%Aprot + rr%Aneut) 
-  
-  call calculate_h0_harm_osc(1.d0,jbas,rms,5)
+
+  jbas%hw = 1
+  call calculate_h0_harm_osc(jbas,rms,5)
+  jbas%hw = rr%hospace
   
   ! multiply by scale factors to make it into r^2 instead of u_ho 
   rms%fhh = rms%fhh * hbarc2_over_mc2 * 2.d0 * mass_factor / rms%hospace
@@ -248,10 +475,8 @@ subroutine initialize_rms_radius(rms,rr,jbas)
 
 
 end subroutine 
-!======================================================================
-!======================================================================
+!=========================================================
 subroutine initialize_CM_radius(rms,rr,jbas)
-  ! center of mass <R^2> 
   implicit none 
   
   type(sq_op) :: rr, rms 
@@ -260,8 +485,10 @@ subroutine initialize_CM_radius(rms,rr,jbas)
   integer :: q,i
   
   mass_factor = 1.d0/dfloat(rr%Aprot + rr%Aneut) 
-  
-  call calculate_h0_harm_osc(1.d0,jbas,rms,5)
+
+  jbas%hw=1
+  call calculate_h0_harm_osc(jbas,rms,5)
+  jbas%hw=rr%hospace
   
   ! multiply by scale factors to make it into r^2 instead of u_ho 
   rms%fhh = rms%fhh * hbarc2_over_mc2 * 2.d0 * mass_factor / rms%hospace
@@ -456,7 +683,6 @@ subroutine initialize_CM_radius_onebody(rms,rr,jbas)
 end subroutine initialize_CM_radius_onebody
 !==================================================================== 
 subroutine build_Hcm(pp,rr,Hcm,jbas)
-  ! center of mass hamiltonian 
   implicit none 
 
   type(spd) :: jbas
@@ -479,14 +705,14 @@ subroutine build_Hcm(pp,rr,Hcm,jbas)
   call copy_rank0_to_tensor_format(Htemp,Hcm,jbas) 
 end subroutine build_Hcm
 !==================================================================== 
-subroutine calculate_CM_energy(pp,rr,hw) 
-  ! center of mass energy
+subroutine calculate_CM_energy(pp,rr) 
   implicit none 
   
   type(sq_op) :: pp,rr,Hcm
   real(8) :: hw,wTs(2),Ecm(3) 
   integer :: i
- 
+
+  hw = pp%hospace
   call duplicate_sq_op(pp,Hcm)
   call add_sq_op(pp,1.d0,rr,1.d0,Hcm)
   Ecm(1) = Hcm%E0 - 1.5d0*hw ! store Ecm for this Hcm frequency 
@@ -507,9 +733,58 @@ subroutine calculate_CM_energy(pp,rr,hw)
   
 end subroutine
 !=====================================================
-!===================================================== 
+!==================================================================== 
+subroutine calculate_CM_energy_TDA(TDA,rr,pp,ppTDA,rrTDA,hw) 
+  implicit none 
+  
+  type(sq_op) :: rr,pp,Hcm 
+  type(full_sp_block_mat) :: TDA,HcmTDA,ppTDA,rrTDA
+  real(8) :: hw,wTs(2)
+  real(8),allocatable,dimension(:) :: energies,omegas 
+  integer :: i,q
+  character(3) :: args
+ 
+  
+  call duplicate_sp_mat(TDA,HcmTDA) 
+  call duplicate_sq_op(rr,Hcm)
+  allocate(energies(3*ppTDA%map(1))) 
+  allocate(omegas(2*TDA%map(1)))
+  
+  call add_sp_mat(ppTDA,1.d0,rrTDA,1.d0,HcmTDA)
+  call add_sq_op(pp,1.d0,rr,1.d0,Hcm) 
+  call TDA_expectation_value(TDA,HcmTDA) 
+
+  energies(1:TDA%map(1)) = HcmTDA%blkM(1)%eigval + Hcm%E0 - 1.5d0*hw
+  
+  do q = 1, TDA%map(1) 
+     ! new frequencies
+     wTs = optimum_omega_for_CM_hamiltonian(hw,energies(q)) 
+     omegas(q) = wTs(1) 
+     omegas(q+TDA%map(1)) = wTs(2)
+     
+     do i = 1, 2
+        call add_sq_op(pp,1.d0,rr,wTs(i)**2/hw**2,Hcm) 
+        call add_sp_mat(ppTDA,1.d0,rrTDA,wTs(i)**2/hw**2,HcmTDA)
+        call TDA_expectation_value(TDA,HcmTDA) 
+        energies(i*TDA%map(1)+q) = HcmTDA%blkM(1)%eigval(q) + Hcm%E0 - 1.5d0*wTs(i) 
+     end do
+  end do 
+  
+  ! for formatting
+   i = 1+5*TDA%map(1) 
+   write(args,'(I3)') i 
+   args = adjustl(args) 
+
+  !write results to file
+  open(unit=42,file=trim(OUTPUT_DIR)//&
+         trim(adjustl(prefix))//'_Ecm_excited.dat')
+  write(42,'('//trim(args)//'(e14.6))') hw, omegas, energies 
+  close(42)
+  
+end subroutine calculate_CM_energy_TDA
+
 subroutine calculate_EX(op,jbas) 
-  ! calculates electric transition operator 
+  ! calculates electromagnetic transition operator 
   implicit none 
   
   type(spd) :: jbas
@@ -518,7 +793,11 @@ subroutine calculate_EX(op,jbas)
   integer :: ta,tb,tc,td,la,lb,lc,ld,ja,jb,jc,jd
   real(8) :: pol,charge(2),dcgi,dcgi00,x,dcg,hw,holength
 
-  pol = 0.0d0   ! between -1 and 0 
+  pol = 0.0d0  ! between 0 and 1 
+  ! if (op%rank == 2 )then  !!! electricdipole transition
+  !    pol = -0.5 ! N=Z 
+  ! end if
+  
   hw = op%hospace
   holength = sqrt(hbarc2_over_mc2/hw) 
   x = dcgi00()
@@ -527,6 +806,14 @@ subroutine calculate_EX(op,jbas)
   charge(1) = (1+pol) 
   charge(2) = pol 
   
+  !!! Brown sd-Shell values (2008)
+ ! charge(1) = 1.36
+ ! charge(2) = 0.45  
+
+  !!! Richard Trippel values
+  ! charge(1) = 1  
+  ! charge(2)=1
+
   ! access the correct charge with: 
   ! charge( (jbas%tz(i) + 1)/2 + 1 )  
   
@@ -629,7 +916,7 @@ end subroutine calculate_EX
 !==================================================================================
 !==================================================================================
 subroutine calculate_MX(op,jbas) 
-  ! calculates magnetic transition operator 
+  ! calculates electromagnetic transition operator 
   implicit none 
   
   type(spd) :: jbas
@@ -826,7 +1113,6 @@ end subroutine calculate_GT
 !====================================================================
 !====================================================================
 real(8) function iso_transition_to_ground_ME( Trans_op , Qdag,jbas ) 
-  ! matrix element for transition to core state from isobaric neighbor state.
   implicit none
   
   type(spd) :: jbas
@@ -903,8 +1189,7 @@ real(8) function iso_transition_to_ground_ME( Trans_op , Qdag,jbas )
 end function iso_transition_to_ground_ME
 !==============================================================
 !==============================================================
-real(8) function transition_ME_Tz_EM_Tz( Xout,Trans_op ,Xin,jbas )
-  ! transition matrix element between two isobaric neightbor states
+real(8) function transition_ME_Tz_EM_Tz( Xout,Trans_op ,Xin,jbas ) 
   implicit none
   
   type(spd) :: jbas
@@ -997,8 +1282,7 @@ real(8) function transition_ME_Tz_EM_Tz( Xout,Trans_op ,Xin,jbas )
 end function transition_ME_Tz_EM_Tz
 !====================================================================
 !====================================================================
-real(8) function transition_ME( Xout,Trans_op ,Xin,jbas )
-  ! general transition matrix element between two excited states
+real(8) function transition_ME( Xout,Trans_op ,Xin,jbas ) 
   implicit none
   
   type(spd) :: jbas
@@ -1082,15 +1366,14 @@ real(8) function transition_ME( Xout,Trans_op ,Xin,jbas )
 end function transition_ME
 !====================================================================
 !====================================================================
-real(8) function transition_to_ground_ME( Trans_op , Qdag,jbas )
-  ! transition from excited state to ground state
+real(8) function transition_to_ground_ME( Trans_op , Qdag,jbas ) 
   implicit none
   
   type(spd) :: jbas
   type(sq_op) :: Trans_op,Qdag 
   integer :: ja,jb,ji,jj,rank,Nsp,Abody
   integer :: a,b,i,j,ax,ix,jx,bx,J1,J2
-  real(8) :: sm , phase
+  real(8) :: sm , phase, sm1,sm2
   
   sm = 0.d0 
   
@@ -1118,7 +1401,7 @@ real(8) function transition_to_ground_ME( Trans_op , Qdag,jbas )
              f_tensor_elem(a,i,Qdag,jbas)*phase
      end do
   end do 
-
+  sm1 = sm
   do ax = 1,Nsp-Abody
      a = jbas%parts(ax)
      ja = jbas%jj(a) 
@@ -1149,7 +1432,8 @@ real(8) function transition_to_ground_ME( Trans_op , Qdag,jbas )
         end do
      end do
   end do
-
+  sm2 = sm - sm1
+  
   transition_to_ground_ME = sm * (-1.d0)**(rank/2)
   !  BY SUHONEN'S DEFINITION, I SHOULD BE DEVIDING BY Sqrt(2J+1) 
   !  BUT THE LANCZOS ALGORITHM DID THAT FOR US ALREADY. 
@@ -1180,8 +1464,7 @@ subroutine construct_number_operator(op,H,jbas)
 
   op%E0 = sum(op%fhh)
 end subroutine
-!============================================================================
-!============================================================================
+
 real(8) function RabLAM(na,la,nb,lb,LAM) 
   ! radial integrals in suhonen chapter 6. 
   implicit none 
@@ -1215,12 +1498,12 @@ real(8) function RabLAM(na,la,nb,lb,LAM)
   end do
 
   RabLAM = coef*sm
-end function RabLAM
-!==============================================================================
+end function
+
 ! These functions are often an overflow threat, but 
 ! here I don't think I need to worry, because emax= 2n+l doesn't get much
 ! bigger than 15, and these functions definitely work well into the 20s. 
-!==============================================================================
+
 real(8) function factorial(N) 
   ! N!
   implicit none
@@ -1237,6 +1520,54 @@ real(8) function factorial(N)
   factorial = sm
 end function factorial
 
+real(8) function double_factorial(N) 
+  ! N!! 
+  implicit none
+  integer,intent(in) :: N
+  integer :: i
+  real(8) :: sm 
+  
+  sm = 1
+  
+  do i = N,1,-2
+     sm = sm * i 
+  end do 
+  
+  double_factorial = sm
+end function double_factorial
+
+real(8) function fac_over_doublefac(N,M)
+  !  N!/M!!
+  implicit none 
+  integer,intent(in) :: N,M
+  integer :: i,j,k 
+  real(8) :: sm
+
+  sm = 1.d0
+
+  i = N
+  j = M 
+  do while ( (i > 1) .and. (j > 1))  
+     sm = sm * (dfloat(i)/dfloat(j))
+     i = i -1
+     j = j -2
+  end do
+
+  if ( i.le.1) then
+     do k = j,1,-2
+        sm = sm/k
+     end do
+  else if (j.le.1) then
+     do k = i,1,-1
+        sm = sm*k
+     end do
+  end if
+
+  fac_over_doublefac= sm
+  
+end function fac_over_doublefac
+     
+     
 real(8) function half_int_gamma(N)
   !GAMMA(N+1/2) 
   implicit none
@@ -1252,7 +1583,7 @@ real(8) function half_int_gamma(N)
   end do 
 
   half_int_gamma = sm
-end function half_int_gamma
+end function   
 !=====================================================================================
 !=====================================================================================
 subroutine tensor_product(AA,BB,CC,jbas) 
@@ -1515,8 +1846,21 @@ subroutine tensor_product(AA,BB,CC,jbas)
               pre = 1.d0 
               if (p1==p2) pre = sqrt(0.5d0)
               if (h1==h2) pre = pre*sqrt(0.5d0)
-              sm = 0.d0 
 
+!!! DISCONNECTED DIAGRAMS ==============================================================
+              sm = sqrt((J1+1.d0)*(J2+1.d0)*(rank_c+1.d0)) * ( &
+                   f_tensor_elem(p1,h1,AA,jbas) * f_tensor_elem(p2,h2,BB,jbas) * &
+                   coef9(jp1,jh1,rank_a,jp2,jh2,rank_b,J1,J2,rank_c)&
+                   
+                   - f_tensor_elem(p2,h1,AA,jbas) * f_tensor_elem(p1,h2,BB,jbas) * &
+                   coef9(jp2,jh1,rank_a,jp1,jh2,rank_b,J1,J2,rank_c) * (-1)**((jp1+jp2+J1)/2)&
+
+                   + f_tensor_elem(p2,h2,AA,jbas) * f_tensor_elem(p1,h1,BB,jbas) * &
+                   coef9(jp2,jh2,rank_a,jp1,jh1,rank_b,J1,J2,rank_c) * (-1)**((jp1+jp2+jh1+jh2+J1+J2)/2)&
+
+                   - f_tensor_elem(p1,h2,AA,jbas) * f_tensor_elem(p2,h1,BB,jbas) * &
+                   coef9(jp1,jh2,rank_a,jp2,jh1,rank_b,J1,J2,rank_c) * (-1)**((jh1+jh2+J2)/2) ) 
+!!! ==================================================================================
               do ax = 1, parts
                  a = jbas%parts(ax)
                  ja = jbas%jj(a)
@@ -1687,10 +2031,9 @@ subroutine tensor_product(AA,BB,CC,jbas)
      end do
   end do
 
-  ! these are matrix multiplications
-  call tensor_product_222_pp_hh(AA,BB,CC,jbas)
-  call tensor_product_222_ph(AA,BB,CC,jbas) 
-
+   call tensor_product_222_pp_hh(AA,BB,CC,jbas)
+   call tensor_product_222_ph(AA,BB,CC,jbas) 
+  ! do nothing
 end subroutine tensor_product
 !=====================================================================================
 !=====================================================================================
@@ -1929,7 +2272,22 @@ subroutine tensor_dTz_tensor_product(AA,BB,CC,jbas)
            if (p1==p2) pre = sqrt(0.5d0)
            if (h1==h2) pre = pre*sqrt(0.5d0)
            sm = 0.d0 
+!!! DISCONNECTED DIAGRAMS ==============================================================
+              sm = sqrt((J1+1.d0)*(J2+1.d0)*(rank_c+1.d0)) * ( &
+                   f_tensor_elem(p1,h1,AA,jbas) * f_iso_ladder_elem(p2,h2,BB,jbas) * &
+                   coef9(jp1,jh1,rank_a,jp2,jh2,rank_b,J1,J2,rank_c)&
+                   
+                   - f_tensor_elem(p2,h1,AA,jbas) * f_iso_ladder_elem(p1,h2,BB,jbas) * &
+                   coef9(jp2,jh1,rank_a,jp1,jh2,rank_b,J1,J2,rank_c) * (-1)**((jp1+jp2+J1)/2)&
 
+                   + f_tensor_elem(p2,h2,AA,jbas) * f_iso_ladder_elem(p1,h1,BB,jbas) * &
+                   coef9(jp2,jh2,rank_a,jp1,jh1,rank_b,J1,J2,rank_c) * (-1)**((jp1+jp2+jh1+jh2+J1+J2)/2)&
+
+                   - f_tensor_elem(p1,h2,AA,jbas) * f_iso_ladder_elem(p2,h1,BB,jbas) * &
+                   coef9(jp1,jh2,rank_a,jp2,jh1,rank_b,J1,J2,rank_c) * (-1)**((jh1+jh2+J2)/2) )
+              
+!!! ==================================================================================
+           
            do ax = 1, parts
               a = jbas%parts(ax)
               ja = jbas%jj(a)
@@ -2099,15 +2457,13 @@ subroutine tensor_dTz_tensor_product(AA,BB,CC,jbas)
      end do
   end do
 
-  !matrix multiplications
   call dTZ_tensor_product_222_pp_hh(AA,BB,CC,jbas)
   call dTz_tensor_product_222_ph(AA,BB,CC,jbas) 
-
+  ! do nothing
 end subroutine tensor_dTz_tensor_product
 !=========================================================================================================
 !=========================================================================================================
 subroutine EOM_observables( ladder_ops, iso_ops, O1,HS, Hcm, trans, mom, eom_states , jbas)
-  !neatly prints all of the requested observables to files
   implicit none
 
   type(sq_op),dimension(:) :: ladder_ops
@@ -2193,15 +2549,16 @@ subroutine EOM_observables( ladder_ops, iso_ops, O1,HS, Hcm, trans, mom, eom_sta
               Energies(states) = ladder_ops(in)%E0
 
               write(*,'(4(f19.12))') E_in,E_out,Strength_down,Strength_up           
+
            end do
 
            open(unit=31,file=trim(OUTPUT_DIR)//trim(adjustl(prefix))//&
-                '_energies_strengths_'//trans%oper//'_'//trans%Jpi1(q)//'_'//trans%Jpi2(q)//'.dat',position='append')
+                '_energies_strengths_'//trans%oper//'_'//trans%Jpi1(q)//'_'//trans%Jpi2(q)//'.dat')
            write(31,'(2(I5),'//trim(adjustl(flts))//'(f25.14))') nint(HS%hospace),HS%eMax,HS%E0,Energies,strengths
            close(31)
-
+           
            deallocate(Energies,strengths)  
-     
+           
         else
            instate = 0
            do In = 1, size(ladder_ops)
@@ -2257,7 +2614,7 @@ subroutine EOM_observables( ladder_ops, iso_ops, O1,HS, Hcm, trans, mom, eom_sta
               dTzlab = adjustl(dTzlab) 
               open(unit=31,file=trim(OUTPUT_DIR)//trim(adjustl(prefix))//&
                    '_energies_strengths_'//trans%oper//'_'//trans%Jpi1(q)//'_'//statlab//'_'&
-                   //trans%Jpi2(q)//'_dTz'//trim(dTzlab)//'.dat',position='append')
+                   //trans%Jpi2(q)//'_dTz'//trim(dTzlab)//'.dat')
               write(31,'(2(I5),'//trim(adjustl(flts))//'(f25.14))') &
                    nint(HS%hospace),HS%eMax,ladder_ops(in)%E0,Energies,strengths
               close(31)
@@ -2324,7 +2681,7 @@ subroutine EOM_observables( ladder_ops, iso_ops, O1,HS, Hcm, trans, mom, eom_sta
            dTzlab = adjustl(dTzlab)               
            open(unit=31,file=trim(OUTPUT_DIR)//trim(adjustl(prefix))//&
                 '_energies_strengths_'//trans%oper//'_'//trans%Jpi1(q)//'_'//statlab//'_'//&
-                trans%Jpi2(q)//'_dTz'//trim(dTzlab)//'.dat',position='append')
+                trans%Jpi2(q)//'_dTz'//trim(dTzlab)//'.dat')
            write(31,'(2(I5),'//trim(adjustl(flts))//'(f25.14))') nint(HS%hospace),&
                 HS%eMax,iso_ops(in)%E0,Energies,strengths
            close(31)
@@ -2388,7 +2745,7 @@ subroutine EOM_observables( ladder_ops, iso_ops, O1,HS, Hcm, trans, mom, eom_sta
         end do
         dTZlab = '0 '
         open(unit=31,file=trim(OUTPUT_DIR)//trim(adjustl(prefix))//&
-             '_energies_moments_'//mom%oper//'_'//mom%Jpi1(q)//'_dTz'//trim(dTzlab)//'.dat',position='append')
+             '_energies_moments_'//mom%oper//'_'//mom%Jpi1(q)//'_dTz'//trim(dTzlab)//'.dat')
         write(31,'(2(I5),'//trim(adjustl(flts))//'(f25.14))') nint(HS%hospace),HS%eMax,HS%E0,Energies,moments
         close(31)
         deallocate(Energies,moments)  
@@ -2418,7 +2775,7 @@ subroutine EOM_observables( ladder_ops, iso_ops, O1,HS, Hcm, trans, mom, eom_sta
            
            Mfi = transition_ME_Tz_EM_Tz(iso_ops(in),O1,iso_ops(in),jbas)  
 
-           moment = Mfi * sqrt(Jin+1.d0)*dcgi(Jin,Jin,O1%rank,0,Jin,Jin)
+           moment = Mfi / sqrt(Jin+1.d0)*dcgi(Jin,Jin,O1%rank,0,Jin,Jin)
            E_in = iso_ops(in)%E0
            write(*,'(2(f19.12))') E_in,moment
            states = states + 1
@@ -2429,7 +2786,7 @@ subroutine EOM_observables( ladder_ops, iso_ops, O1,HS, Hcm, trans, mom, eom_sta
         dTzlab = adjustl(dTzlab)               
            
         open(unit=31,file=trim(OUTPUT_DIR)//trim(adjustl(prefix))//&
-             '_energies_moments_'//mom%oper//'_'//mom%Jpi1(q)//'_dTz'//trim(dTzlab)//'.dat',position='append')
+             '_energies_moments_'//mom%oper//'_'//mom%Jpi1(q)//'_dTz'//trim(dTzlab)//'.dat')
         write(31,'(2(I5),'//trim(adjustl(flts))//'(f25.14))') nint(HS%hospace),HS%eMax,HS%E0,Energies,moments
         close(31)
         deallocate(Energies,moments)  
@@ -2460,7 +2817,6 @@ end subroutine EOM_observables
 !=========================================================================================================
 !=========================================================================================================
 subroutine EOM_beta_observables( ladder_ops, iso_ops, O1,HS, Hcm, trans, mom, eom_states , jbas)
-  ! same as EOM_observables, but for the gamow teller operator. Not finished yet. 
   implicit none
 
   type(sq_op),dimension(:) :: ladder_ops
@@ -2555,7 +2911,7 @@ subroutine EOM_beta_observables( ladder_ops, iso_ops, O1,HS, Hcm, trans, mom, eo
         end do
         
         open(unit=31,file=trim(OUTPUT_DIR)//trim(adjustl(prefix))//&
-             '_energies_strengths_'//trans%oper//'_'//trans%Jpi1(q)//'_'//trans%Jpi2(q)//'.dat',position='append')
+             '_energies_strengths_'//trans%oper//'_'//trans%Jpi1(q)//'_'//trans%Jpi2(q)//'.dat')
         write(31,'(2(I5),'//trim(adjustl(flts))//'(f25.14))') nint(HS%hospace),HS%eMax,HS%E0,Energies,strengths
         close(31)
         
@@ -2600,7 +2956,7 @@ subroutine EOM_beta_observables( ladder_ops, iso_ops, O1,HS, Hcm, trans, mom, eo
         end do
         
         open(unit=31,file=trim(OUTPUT_DIR)//trim(adjustl(prefix))//&
-             '_energies_strengths_'//trans%oper//'_'//trans%Jpi1(q)//'_'//trans%Jpi2(q)//'.dat',position='append')
+             '_energies_strengths_'//trans%oper//'_'//trans%Jpi1(q)//'_'//trans%Jpi2(q)//'.dat')
         write(31,'(2(I5),'//trim(adjustl(flts))//'(f25.14))') nint(HS%hospace),HS%eMax,HS%E0,Energies,strengths
         close(31)
         
@@ -2665,7 +3021,7 @@ subroutine EOM_beta_observables( ladder_ops, iso_ops, O1,HS, Hcm, trans, mom, eo
               dTzlab = adjustl(dTzlab) 
               open(unit=31,file=trim(OUTPUT_DIR)//trim(adjustl(prefix))//&
                    '_energies_strengths_'//trans%oper//'_'//trans%Jpi1(q)//'_'//statlab//'_'&
-                   //trans%Jpi2(q)//'_dTz'//trim(dTzlab)//'.dat',position='append')
+                   //trans%Jpi2(q)//'_dTz'//trim(dTzlab)//'.dat')
               write(31,'(2(I5),'//trim(adjustl(flts))//'(f25.14))') &
                    nint(HS%hospace),HS%eMax,ladder_ops(in)%E0,Energies,strengths
               close(31)
@@ -2734,7 +3090,7 @@ subroutine EOM_beta_observables( ladder_ops, iso_ops, O1,HS, Hcm, trans, mom, eo
                  dTzlab = adjustl(dTzlab) 
                  open(unit=31,file=trim(OUTPUT_DIR)//trim(adjustl(prefix))//&
                       '_energies_strengths_'//trans%oper//'_'//trans%Jpi1(q)//'_'//statlab//'_'&
-                      //trans%Jpi2(q)//'_dTz'//trim(dTzlab)//'.dat',position='append')
+                      //trans%Jpi2(q)//'_dTz'//trim(dTzlab)//'.dat')
                  write(31,'(2(I5),'//trim(adjustl(flts))//'(f25.14))') &
                       nint(HS%hospace),HS%eMax,iso_ops(in)%E0,Energies,strengths
                  close(31)
@@ -2803,7 +3159,7 @@ subroutine EOM_beta_observables( ladder_ops, iso_ops, O1,HS, Hcm, trans, mom, eo
                  dTzlab = adjustl(dTzlab)               
                  open(unit=31,file=trim(OUTPUT_DIR)//trim(adjustl(prefix))//&
                       '_energies_strengths_'//trans%oper//'_'//trans%Jpi1(q)//'_'//statlab//'_'//&
-                      trans%Jpi2(q)//'_dTz'//trim(dTzlab)//'.dat',position='append')
+                      trans%Jpi2(q)//'_dTz'//trim(dTzlab)//'.dat')
                  write(31,'(2(I5),'//trim(adjustl(flts))//'(f25.14))') nint(HS%hospace),&
                       HS%eMax,iso_ops(in)%E0,Energies,strengths
                  close(31)
@@ -2822,8 +3178,398 @@ subroutine EOM_beta_observables( ladder_ops, iso_ops, O1,HS, Hcm, trans, mom, eo
 end subroutine EOM_beta_observables
 
 
+!=========================================================
+subroutine initialize_rho21_zerorange(rho21,jbas)
+  use gaulag
+  implicit none 
+  
+  type(sq_op) :: rho21
+  type(spd) :: jbas
+  real(8) :: nu,alpha,BB,AA,sm,angular,d6ji,dcgi,pre,dcgi00,t1,t2
+  real(8) :: omp_get_wtime,ang1,ang2
+  real(8),dimension(20) :: x,w
+  real(8),allocatable,dimension(:) :: Lag_a,Lag_b,Lag_c,Lag_d
+  integer :: q,i,ord,a,b,c,d,II,JJ,KK,BigL,weirdx,Lmin,Lmax,qxx
+  integer :: ja,jb,jc,jd,la,lb,lc,ld,xmin,xmax,antisym
+  integer :: npp,nhh,nph,ta,tb,tc,td,na,nb,nc,nd,Jtot
+  integer :: jxstart,c1,c2,n1,n2,g_ix,al,bl,cl,dl,LL,s
+  logical :: square
 
-end module operators
+
+  pre = dcgi00()
+  nu = rho21%hospace*0.5d0 /hbarc2_over_mc2
+
+  ord = 20
+  AA = 0.0
+  BB = 2.0
+  
+  t1 = omp_get_Wtime()
+  if (rho21%Aprot+rho21%Aneut==2) then
+     q=block_index(2,0,0)
+
+     nhh = rho21%mat(q)%nhh
+     npp = rho21%mat(q)%npp
+     nph = rho21%mat(q)%nph
+     Jtot = rho21%mat(q)%lam(1)
+
+     ! print*, q,rho21%nblocks
+     do g_ix = 1,6 
+        n1 = size(rho21%mat(q)%gam(g_ix)%X(:,1))
+        n2 = size(rho21%mat(q)%gam(g_ix)%X(1,:))
+        if ((n1*n2) == 0) cycle 
+
+        ! read in information about which 
+        ! array we are using from public arrays
+        c1 = sea1(g_ix) 
+        c2 = sea2(g_ix) 
+        square = sqs(g_ix) 
+        jxstart = jst(g_ix) 
+
+
+        do ii = 1, n1
+
+           a = rho21%mat(q)%qn(c1)%Y(ii,1)
+           b = rho21%mat(q)%qn(c1)%Y(ii,2)
+           pre = 1.d0       
+           if (a==b) pre = 1/sqrt(2.d0)
+
+           na = jbas%nn(a) 
+           nb = jbas%nn(b)
+           ja = jbas%jj(a)
+           jb = jbas%jj(b)
+           la = jbas%ll(a)
+           lb = jbas%ll(b)
+           ta = jbas%itzp(a)
+           tb = jbas%itzp(b) 
+
+           allocate(Lag_a(0:na),Lag_b(0:nb) )
+           call generate_associated_laguerre_polynomials(na,la,Lag_a)
+           call generate_associated_laguerre_polynomials(nb,lb,Lag_b)
+
+           do jj = min(jxstart,ii),n2 
+
+              c = rho21%mat(q)%qn(c2)%Y(jj,1)
+              d = rho21%mat(q)%qn(c2)%Y(jj,2)
+              if (c==d) pre = pre/sqrt(2.d0) 
+
+              nc = jbas%nn(c) 
+              nd = jbas%nn(d)
+              jc = jbas%jj(c)
+              jd = jbas%jj(d)
+              lc = jbas%ll(c)
+              ld = jbas%ll(d)
+              tc = jbas%itzp(c)
+              td = jbas%itzp(d) 
+
+              if (la + lb == 0 ) then
+                 if (lc .ne. ld) cycle
+              end if
+
+              if (lc + ld == 0 ) then
+                 if (la .ne. lb) cycle
+              end if
+
+              !the ls should sum to even due to parity conservation           
+              alpha = (la+lb+lc+ld)/2+0.5d0 
+
+              ! generate quadrature rule for \int_0^\infty  x^\alpha e^{-2x} f(x)
+              call get_rule(ord,alpha,AA,BB,x,w) 
+
+              allocate(Lag_c(0:nc),Lag_d(0:nd) )
+
+              ! get laguerre polynomial coefficients 
+              call generate_associated_laguerre_polynomials(nc,lc,Lag_c)
+              call generate_associated_laguerre_polynomials(nd,ld,Lag_d)
+
+              sm = 0.d0 
+              do kk = 1, ord
+
+                 sm = sm +  asslag(na,la,lag_a,x(kk))*asslag(nb,lb,lag_b,x(kk))*asslag(nc,lc,lag_c,x(kk)) &
+                      *asslag(nd,ld,lag_d,x(kk))*w(kk) 
+
+              end do
+
+              deallocate(Lag_c,Lag_d)
+
+              ! sm is now the integral \int_0^\infty  x^\alpha e^{-2x} f(x)
+
+              sm = sm * (nu*0.5)**(1.5) /Pi_const
+              ! sm is now the radial part of the matrix element.          
+
+              ! There is also an angular momentum coupled pre-factor
+              angular = 0.d0
+              ang2=0.d0 
+              ang1=0.d0 
+
+              Lmin = max( abs(la-lb) , abs(lc-ld))
+              Lmax = min( la+lb , lc+ld)
+
+              xmin = 1!max(  abs(Jtot-1),abs(2*la-jb),abs(2*lc-jd))          
+              xmax = 21!min( Jtot+jb , Jtot+jd)           
+
+              s = 1
+              al = 2*la
+              bl = 2*lb
+              cl = 2*lc
+              dl = 2*ld
+
+
+              if (kron_del(ta,tc)*kron_del(tb,td) == 1) then 
+                 do BigL = Lmin,Lmax              
+                    LL = 2*BigL
+                    do weirdx = xmin,xmax,2
+
+                       ang1 = ang1 + (weirdx + 1.d0)*d6ji(ja,jb,Jtot,weirdx,s,al) * &
+                            d6ji(al,bl,LL,s,weirdx,jb) * dcgi(al,0,bl,0,LL,0)*&
+                            dcgi(cl,0,dl,0,LL,0)*d6ji(jc,jd,Jtot,weirdx,s,cl) *&
+                            d6ji(cl,dl,LL,s,weirdx,jd) 
+
+                    end do
+                 end do
+              end if
+
+              if (kron_del(ta,td)*kron_del(tb,tc) == 1) then 
+                 do BigL = Lmin,Lmax              
+                    LL = 2*BigL
+                    do weirdx = xmin,xmax,2
+
+                       ang2 = ang2 + (weirdx + 1.d0)*d6ji(ja,jb,Jtot,weirdx,s,al) * &
+                            d6ji(al,bl,LL,s,weirdx,jb) * dcgi(al,0,bl,0,LL,0)*&
+                            dcgi(cl,0,dl,0,LL,0)*d6ji(jd,jc,Jtot,weirdx,s,dl) *&
+                            d6ji(dl,cl,LL,s,weirdx,jc)   ! the permutation comes from the spins, not the
+                       ! mls, so, the clebsch with c and d does not change. 
+
+                    end do
+                 end do
+              end if
+
+              angular = angular + ang1 - ang2 * (-1)**((jc+jd+cl+dl+Jtot+LL)/2) !!! antisymmetry condition              
+              angular = angular * (-1) ** ( (ja+jb+jc+jd)/2)    !!! this may not be needed if I got the coupling order wrong.
+
+
+              angular = angular * sqrt( (ja+1.d0)*(jb+1.d0)*(jc+1.d0)*(jd+1.d0) &
+                   *(2*la+1.d0)*(2*lb+1.d0)*(2*lc+1.d0)*(2*ld+1.d0)) / 4.d0 / Pi_const                                                
+              rho21%mat(q)%gam(g_ix)%X(II,JJ) = angular*sm *pre
+              if (square) rho21%mat(q)%gam(g_ix)%X(JJ,II) = angular*sm *pre 
+
+           end do
+           deallocate(Lag_a,Lag_b)
+        end do
+     end do
+     
+  else
+     !$OMP PARALLEL DO DEFAULT(FIRSTPRIVATE), SHARED(RHO21,JBAS)  
+     do q= 1, rho21%nblocks
+
+        nhh = rho21%mat(q)%nhh
+        npp = rho21%mat(q)%npp
+        nph = rho21%mat(q)%nph
+        Jtot = rho21%mat(q)%lam(1)
+
+        ! print*, q,rho21%nblocks
+        do g_ix = 1,6 
+           n1 = size(rho21%mat(q)%gam(g_ix)%X(:,1))
+           n2 = size(rho21%mat(q)%gam(g_ix)%X(1,:))
+           if ((n1*n2) == 0) cycle 
+
+           ! read in information about which 
+           ! array we are using from public arrays
+           c1 = sea1(g_ix) 
+           c2 = sea2(g_ix) 
+           square = sqs(g_ix) 
+           jxstart = jst(g_ix) 
+
+
+           do ii = 1, n1
+
+              a = rho21%mat(q)%qn(c1)%Y(ii,1)
+              b = rho21%mat(q)%qn(c1)%Y(ii,2)
+              pre = 1.d0       
+              if (a==b) pre = 1/sqrt(2.d0)
+
+              na = jbas%nn(a) 
+              nb = jbas%nn(b)
+              ja = jbas%jj(a)
+              jb = jbas%jj(b)
+              la = jbas%ll(a)
+              lb = jbas%ll(b)
+              ta = jbas%itzp(a)
+              tb = jbas%itzp(b) 
+
+              allocate(Lag_a(0:na),Lag_b(0:nb) )
+              call generate_associated_laguerre_polynomials(na,la,Lag_a)
+              call generate_associated_laguerre_polynomials(nb,lb,Lag_b)
+
+              do jj = min(jxstart,ii),n2 
+
+                 c = rho21%mat(q)%qn(c2)%Y(jj,1)
+                 d = rho21%mat(q)%qn(c2)%Y(jj,2)
+                 if (c==d) pre = pre/sqrt(2.d0) 
+
+                 nc = jbas%nn(c) 
+                 nd = jbas%nn(d)
+                 jc = jbas%jj(c)
+                 jd = jbas%jj(d)
+                 lc = jbas%ll(c)
+                 ld = jbas%ll(d)
+                 tc = jbas%itzp(c)
+                 td = jbas%itzp(d) 
+
+                 if (la + lb == 0 ) then
+                    if (lc .ne. ld) cycle
+                 end if
+
+                 if (lc + ld == 0 ) then
+                    if (la .ne. lb) cycle
+                 end if
+
+                 !the ls should sum to even due to parity conservation           
+                 alpha = (la+lb+lc+ld)/2+0.5d0 
+
+                 ! generate quadrature rule for \int_0^\infty  x^\alpha e^{-2x} f(x)
+                 call get_rule(ord,alpha,AA,BB,x,w) 
+
+                 allocate(Lag_c(0:nc),Lag_d(0:nd) )
+
+                 ! get laguerre polynomial coefficients 
+                 call generate_associated_laguerre_polynomials(nc,lc,Lag_c)
+                 call generate_associated_laguerre_polynomials(nd,ld,Lag_d)
+
+                 sm = 0.d0 
+                 do kk = 1, ord
+
+                    sm = sm +  asslag(na,la,lag_a,x(kk))*asslag(nb,lb,lag_b,x(kk))*asslag(nc,lc,lag_c,x(kk)) &
+                         *asslag(nd,ld,lag_d,x(kk))*w(kk) 
+
+                 end do
+
+                 deallocate(Lag_c,Lag_d)
+
+                 ! sm is now the integral \int_0^\infty  x^\alpha e^{-2x} f(x)
+
+                 sm = sm * (nu*0.5)**(1.5) /Pi_const
+                 ! sm is now the radial part of the matrix element.          
+
+                 ! There is also an angular momentum coupled pre-factor
+                 angular = 0.d0
+                 ang2=0.d0 
+                 ang1=0.d0 
+
+                 Lmin = max( abs(la-lb) , abs(lc-ld))
+                 Lmax = min( la+lb , lc+ld)
+
+                 xmin = 1!max(  abs(Jtot-1),abs(2*la-jb),abs(2*lc-jd))          
+                 xmax = 21!min( Jtot+jb , Jtot+jd)           
+
+                 s = 1
+                 al = 2*la
+                 bl = 2*lb
+                 cl = 2*lc
+                 dl = 2*ld
+
+
+                 if (kron_del(ta,tc)*kron_del(tb,td) == 1) then 
+                    do BigL = Lmin,Lmax              
+                       LL = 2*BigL
+                       do weirdx = xmin,xmax,2
+
+                          ang1 = ang1 + (weirdx + 1.d0)*d6ji(ja,jb,Jtot,weirdx,s,al) * &
+                               d6ji(al,bl,LL,s,weirdx,jb) * dcgi(al,0,bl,0,LL,0)*&
+                               dcgi(cl,0,dl,0,LL,0)*d6ji(jc,jd,Jtot,weirdx,s,cl) *&
+                               d6ji(cl,dl,LL,s,weirdx,jd) 
+
+                       end do
+                    end do
+                 end if
+
+                 if (kron_del(ta,td)*kron_del(tb,tc) == 1) then 
+                    do BigL = Lmin,Lmax              
+                       LL = 2*BigL
+                       do weirdx = xmin,xmax,2
+
+                          ang2 = ang2 + (weirdx + 1.d0)*d6ji(ja,jb,Jtot,weirdx,s,al) * &
+                               d6ji(al,bl,LL,s,weirdx,jb) * dcgi(al,0,bl,0,LL,0)*&
+                               dcgi(cl,0,dl,0,LL,0)*d6ji(jd,jc,Jtot,weirdx,s,dl) *&
+                               d6ji(dl,cl,LL,s,weirdx,jc)   ! the permutation comes from the spins, not the
+                          ! mls, so, the clebsch with c and d does not change. 
+
+                       end do
+                    end do
+                 end if
+
+                 angular = angular + ang1 - ang2 * (-1)**((jc+jd+cl+dl+Jtot+LL)/2) !!! antisymmetry condition              
+                 angular = angular * (-1) ** ( (ja+jb+jc+jd)/2)    !!! this may not be needed if I got the coupling order wrong.
+
+
+                 angular = angular * sqrt( (ja+1.d0)*(jb+1.d0)*(jc+1.d0)*(jd+1.d0) &
+                      *(2*la+1.d0)*(2*lb+1.d0)*(2*lc+1.d0)*(2*ld+1.d0)) / 4.d0 / Pi_const                                                
+                 rho21%mat(q)%gam(g_ix)%X(II,JJ) = angular*sm *pre
+                 if (square) rho21%mat(q)%gam(g_ix)%X(JJ,II) = angular*sm *pre 
+
+              end do
+              deallocate(Lag_a,Lag_b)
+           end do
+        end do
+     end do
+     !$OMP END PARALLEL DO
+  end if
+  t2 = omp_get_Wtime()
+  print*, 'time:', t2-t1
+end subroutine initialize_rho21_zerorange
+
+real(8) function asslag(n,l,lag,x)
+  implicit none
+
+  integer :: n,l ,ii
+  real(8) :: lag(0:n),x,sm
+
+  sm = 0.d0 
+  do ii = 0,n
+     sm = sm + lag(ii) * x**ii
+  end do
+
+  asslag= sm
+end function asslag
+
+ 
+subroutine generate_associated_laguerre_polynomials(nMax,l,LAGnl)
+  implicit none
+
+  integer :: nMax,l,n, II 
+  real(8) :: LAG(0:nMax,0:nMax) !!1 coefficients
+  real(8) :: norm,LAGnl(0:nMax)
+
+  
+  LAG = 0.d0
+
+  LAG(0,0) = 1.d0   ! L_0^(l+1/2) == 1 always
+
+  if (nMax > 0) then 
+     LAG(1,0) = 1.5d0 + l  !!! L_1^(l+1/2) = 1.5+l-x 
+     LAG(1,1) = -1.d0   
+     
+     LAG(1,:) = LAG(1,:) 
+  end if
+  
+!!! now use recurrence relation
+  do n = 2, nMax !!! loop over Laguerre rank    
+
+     LAG(n,0) = ( (2*n-0.5 + l)* LAG(n-1,0)  - (n-0.5+l) * LAG(n-2,0) ) / n
+     do II = 1 , n !!! loop over powers of x        
+        LAG(n,II) = ( (2*n-0.5 + l)* LAG(n-1,II)  - (n-0.5+l) * LAG(n-2,II) - LAG(n-1,II-1) )  / n
+     end do
+  end do
+
+  do n = 0,nMax
+     norm = sqrt( 2.d0**( n+ l +3) *fac_over_doublefac(n,2*n+2*l+1) )
+     LAG(n,:) = LAG(n,:)*norm
+  end do
+
+  LAGnl = LAG(nMax,:)
+  
+end subroutine generate_associated_laguerre_polynomials
+
+end module
   
   
   

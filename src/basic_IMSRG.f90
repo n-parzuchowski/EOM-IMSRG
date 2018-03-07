@@ -17,21 +17,21 @@ module basic_IMSRG
   TYPE :: real_vec !element of an array of matrices
      real(8),allocatable,dimension(:) :: XX 
   END TYPE real_vec
-
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   TYPE :: single_vec !element of an array of matrices
      real,allocatable,dimension(:) :: RR 
   END TYPE single_vec
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   TYPE :: spd    ! single particle discriptor
      INTEGER :: total_orbits,Jtotal_max,lmax,spblocks,E3Max_3file,eMax_3file
-     INTEGER :: lmax_3file, eMax_2file, lmax_2file
+     INTEGER :: lmax_3file, eMax_2file, lmax_2file,hw
      INTEGER, ALLOCATABLE,DIMENSION(:) :: nn, ll, jj, itzp, nshell, mvalue
      INTEGER, ALLOCATABLE,DIMENSION(:) :: con,holes,parts 
      type(int_vec), allocatable,dimension(:) :: states
      type(int_vec),allocatable,dimension(:) :: xmap
      type(int_vec),allocatable,dimension(:,:) :: xmap_tensor
      ! for clarity:  nn, ll, nshell are all the true value
-     ! jj is j+1/2 (so it's an integer) 
+     ! jj is 2*j
      ! likewise itzp is 2*tz  
      REAL(8), ALLOCATABLE,DIMENSION(:) :: e
   END TYPE spd
@@ -100,6 +100,7 @@ module basic_IMSRG
      integer :: num,total_dtz
      character(2),allocatable,dimension(:) :: name
      integer,allocatable,dimension(:) :: ang_mom,par,number_requested,dtz 
+     logical :: trips,response
   end type eom_mgr
 !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -128,13 +129,13 @@ module basic_IMSRG
   logical,public,dimension(9) :: sqs = (/.true.,.false.,.false.,.true.,.true.,.false.,.false.,.false.,.false./)
   ! 100000 if square matrix, 1 if not. 
   logical, public :: checkpointing,writing_bare,reading_bare,writing_omega
-  logical, public :: reading_omega,writing_decoupled,reading_decoupled
+  logical, public :: reading_omega,writing_decoupled,reading_decoupled,writing_human
   integer,public,dimension(9) :: jst = (/10000000,1,1,10000000,10000000,1,1,1,1/)
   integer,allocatable,dimension(:),public :: hb4,pb4
 
   integer,public :: global_counter1=0,global_counter2=0,global_counter3=0
-  real(8),public :: global_sm=0.d0
-  character(500) :: TBME_DIR,SP_DIR,INI_DIR,OUTPUT_DIR
+  real(8),public :: global_sm=0.d0,time0
+  character(500) :: TBME_DIR,SP_DIR,INI_DIR,OUTPUT_DIR,THREE_DIR
    
   ! CHANGE THESE AS NEEDED. ==========================================================
   real(8),public,parameter :: hbarc = 197.326968d0, m_nuc = 938.918725 !2006 values 
@@ -146,6 +147,46 @@ module basic_IMSRG
   character(200),public :: resubmitter 
   !======================================================================================
 contains
+!====================================================
+!====================================================
+subroutine print_time
+  implicit none
+
+  real(8) :: omp_get_wtime
+  integer :: time,hours,mins,secs
+  character(2) :: hr,min,sec
+  
+  time = floor(omp_get_wtime() - time0)
+
+  hours = time/3600
+  mins = mod(time,3600)/60 
+  secs = mod(mod(time,3600),60)
+
+  print*
+
+  write(*,"(A7,I2.2,A1,I2.2,A1,I2.2)") "TIME: ",hours,":",mins,":",secs
+  print*
+end subroutine print_time
+!!!===========================================================
+!!!===========================================================
+  character(5) function nucleus_name(N,Z) 
+!!! print out the name of the nucleus
+    implicit none
+    
+    integer,intent(in) :: N,Z
+    character(2),dimension(0:50) :: names 
+    character(2) :: Astr
+    
+    names = (/"n ","H ","He","Li","Be","B ","C ","N ","O ","F ",&
+         "Ne","Na","Mg","Al","Si","P ","S ","Cl","Ar","K ","Ca",&
+         "Sc","Ti","V ","Cr","Mn","Fe","Co","Ni","Cu","Zn","Ga",&
+         "Ge","As","Se","Br","Kr","Rb","Sr","Y ","Zr","Nb","Mo",&
+         "Tc","Ru","Rh","Pd","Ag","Cd","In","Sn"/)
+        
+    write(Astr,"(I2)") N+Z 
+    nucleus_name =  trim(adjustl(Astr))//adjustl(trim(adjustl(names(Z))))
+    
+  end function nucleus_name
 !====================================================
 !====================================================
 subroutine read_sp_basis(jbas,hp,hn,eMax,lmax,trips,jbx)
@@ -163,7 +204,7 @@ subroutine read_sp_basis(jbas,hp,hn,eMax,lmax,trips,jbx)
   real(8) :: e
   character(1) :: trips
   
-
+ 
   interm= adjustl(spfile)
   open(unit=39,file=trim(SP_DIR)//trim(interm))
   hk=interm(1:2)
@@ -363,7 +404,7 @@ subroutine find_holes(jbas,pholes,nholes,hk)
      open(unit=52,file=trim(SP_DIR)//'hole_scheme_nl')
   end if 
   
-  sz = min(20,size(jbas%con)) 
+  sz = min(30,size(jbas%con)) 
   do
      read(52,*,iostat=ist) p,n,jbas%con(1:sz)
        if (ist < 0) then 
@@ -373,8 +414,9 @@ subroutine find_holes(jbas,pholes,nholes,hk)
      if ((p == pholes).and.(n==nholes)) exit
   end do 
 
+
   close(52) 
-    
+
   allocate(jbas%holes(sum(jbas%con)))
   allocate(jbas%parts(jbas%total_orbits - sum(jbas%con))) 
   ! these arrays help us later in f_elem (in this module) 
@@ -402,7 +444,12 @@ subroutine print_system(jbas)
   implicit none
   
   type(spd) :: jbas
-  integer :: n,p,i 
+  integer :: n,p,i,eMax,lMax
+
+  lMax = maxval(jbas%ll)
+  eMax = max(maxval(jbas%nn)*2,lMax)
+
+  
   
   p = 0 
   n = 0 
@@ -413,9 +460,23 @@ subroutine print_system(jbas)
         n = n +jbas%con(i) * (jbas%jj(i)+1) 
      end if
   end do 
+
+  write(*,*)
+  write(*,"(A)") "===================="
+  write(*,"(A)") "Reference: "//nucleus_name(n,p)
+  write(*,"(A)") "===================="
+  write(*,'(A10,I4)') ' PROTONS: ',p 
+  write(*,'(A10,I4)') ' NEUTRONS: ',n 
+  write(*,'(A6,I3)') ' eMax=',eMax
+  if (lMax /= eMax) then
+     write(*,'(A6,I3)') ' lMax=',lMax
+  end if
+  write(*,'(A4,I3)') ' hw=',jbas%hw 
+  write(*,*) "TWO BODY INTERACTION: "//intfile
+  if (.not. (threebody_file == "none") ) then 
+     write(*,*) "THREE BODY INTERACTION: "//threebody_file
+  end if
   
-  write(*,'(A9,I4)') 'PROTONS: ',p 
-  write(*,'(A9,I4)') 'NEUTRONS: ',n 
   write(*,*)
   write(*,*) 'FILLED PROTON ORBITALS:'
   do i = 1, jbas%total_orbits 
@@ -435,7 +496,6 @@ end subroutine print_system
 !==============================================
 !==============================================
 character(5) function spec_not(i,jbas) 
-  !spectroscopic notation 
   implicit none
   
   integer :: i 
@@ -512,7 +572,7 @@ subroutine allocate_blocks(jbas,op)
   do Jtot = 0,2*jbas%Jtotal_max,2 !looping over blocks
      do Tz = -1,1
         do Par = 0,1
-
+           !if ((Jtot == 2*jbas%Jtotal_max) .and. (Par==1)) cycle
      op%mat(q)%lam(1)=Jtot
      op%mat(q)%lam(2)=Par
      op%mat(q)%lam(3)=Tz
@@ -622,19 +682,18 @@ subroutine allocate_blocks(jbas,op)
   mem= mem*8/1024./1024.
   print*, 'MEMORY OF 2 BODY STORAGE IS: ',mem,'MB'
   call divide_work(op) 
-end subroutine allocate_blocks
+end subroutine
 !==================================================================
 !==================================================================
 subroutine allocate_tensor(jbas,op,zerorank) 
-  ! allocate the sq_op arrays for tensor operators
-  ! must have a zerorank operator allocated previously 
+  ! allocate the sq_op arrays
   implicit none 
   
   type(spd) :: jbas
   type(sq_op) :: op,zerorank 
   integer :: N,AX,q,i,j,j1,j2,tz1,tz2,l1,l2,x,rank
   integer :: Jtot1,Jtot2,Jtot,Tz,Par1,Par2,nph1,npp1,nhh1,nph2,npp2,nhh2
-  integer :: CX,j_min,j_max,numJ,q1,q2
+  integer :: CX,j_min,j_max,numJ,q1,q2,tot_unique
   real(8) :: d6ji,lwake,size,mem
 
   ! rank is multiplied by 2 as well
@@ -643,6 +702,7 @@ subroutine allocate_tensor(jbas,op,zerorank)
   if ( mod(rank,2) == 1 ) STOP 'RANK MUST BE MULTIPLIED BY 2'
   if ( mod(op%dpar,2) == 1) STOP 'dPAR MUST BE MULTIPLIED BY 2' 
   mem = 0.d0 
+  tot_unique=0
   AX = sum(jbas%con) !number of shells under eF 
   op%belowEF = AX
   op%Nsp = jbas%total_orbits
@@ -657,18 +717,19 @@ subroutine allocate_tensor(jbas,op,zerorank)
         j_max = jbas%jj(i) + jbas%jj(j) 
   
         numJ = (j_max - j_min)/2 + 2
-  
+
         x = bosonic_tp_index(i,j,N) 
 
         if (.not. allocated(jbas%xmap_tensor(op%xindx,x)%Z)) then 
            allocate(jbas%xmap_tensor(op%xindx,x)%Z(numJ)) 
         end if 
+
         jbas%xmap_tensor(op%xindx,x)%Z = 0
         jbas%xmap_tensor(op%xindx,x)%Z(1) = j_min
-        
      end do 
   end do 
   
+
   ! quantum numbers of the last block 
   Tz = 1 
   Par1 = 1
@@ -676,12 +737,14 @@ subroutine allocate_tensor(jbas,op,zerorank)
   Jtot2 = Jtot1+ RANK 
 
   op%nblocks =  tensor_block_index(Jtot1,Jtot2,RANK,Tz,Par1)               
- 
+
   allocate(op%tblck(op%nblocks)) 
  
   allocate(op%fph(N-AX,AX))
+  
   op%fph = 0.d0
   mem = mem + sizeof(op%fph)  
+  tot_unique = tot_unique + N-AX * (N-AX + 1)/2 + Ax*(Ax+1)/2+ Ax*(N-Ax) 
   if (.not. op%pphh_ph ) then 
      allocate(op%fpp(N-AX,N-AX))
      allocate(op%fhh(AX,AX)) 
@@ -689,7 +752,7 @@ subroutine allocate_tensor(jbas,op,zerorank)
      op%fhh = 0.d0 
      mem = mem + sizeof(op%fpp)+sizeof(op%fhh) 
   end if 
-
+  
   q = 1
   do Jtot1 = 0,2*jbas%Jtotal_max,2 
      do Jtot2 = max(abs(Jtot1 - rank),Jtot1), Jtot1+rank, 2   
@@ -710,6 +773,7 @@ subroutine allocate_tensor(jbas,op,zerorank)
               op%tblck(q)%lam(2) = Par1 !just remember that they change if the operator has odd parity.
               op%tblck(q)%lam(3) = Tz
               
+       !       q = tensor_block_index(Jtot1,Jtot2,RANK,Tz,Par1)              
               q1 = block_index(Jtot1,Tz,Par1) 
               q2 = block_index(Jtot2,Tz,Par2) 
               
@@ -765,6 +829,8 @@ subroutine allocate_tensor(jbas,op,zerorank)
               allocate(op%tblck(q)%tgam(7)%X(nhh1,npp2)) !Vhhpp
               mem = mem + sizeof(op%tblck(q)%tgam(3)%X) 
               mem = mem + sizeof(op%tblck(q)%tgam(7)%X)
+              tot_unique = tot_unique + npp1*nhh2 + nhh1 *npp2
+              
               if (.not. op%pphh_ph ) then 
                  allocate(op%tblck(q)%tgam(1)%X(npp1,npp2)) !Vpppp
                  allocate(op%tblck(q)%tgam(5)%X(nhh1,nhh2)) !Vhhhh              
@@ -780,6 +846,8 @@ subroutine allocate_tensor(jbas,op,zerorank)
                  mem = mem + sizeof(op%tblck(q)%tgam(6)%X)
                  mem = mem + sizeof(op%tblck(q)%tgam(8)%X)
                  mem = mem + sizeof(op%tblck(q)%tgam(9)%X)
+                 tot_unique = tot_unique + npp1 * npp2 + nhh1 * nhh2 + npp1*nph2 &
+                      + nph1 * nph2 + nph1 * nhh2 + nph1 *npp2 + nhh1 * nph2
               end if 
             
               do i = 1,9
@@ -797,6 +865,8 @@ subroutine allocate_tensor(jbas,op,zerorank)
 
    
    print*, 'Tensor Operator Memory =', mem/1024./1024./1024. , 'GB' 
+   print*, 'Tensor Operator Size= ', tot_unique 
+
    ! i need to fill this last array for tensor_elem
    do q = 1, zerorank%nblocks
    nph1 = 0 ; npp1 = 0 ; nhh1 = 0
@@ -882,7 +952,6 @@ subroutine allocate_tensor(jbas,op,zerorank)
 !==================================================================  
 !==================================================================
 subroutine divide_work(r1) 
-  ! this sorts out which blocks each thread will work on. 
   implicit none 
   
   type(sq_op) :: r1
@@ -1189,8 +1258,7 @@ real(8) function ph_elem(a,b,op,jbas)
 end function
 !=================================================================     
 !=================================================================
-real(8) function f_tensor_elem(a,b,op,jbas)
-  ! returns one body matrix element
+real(8) function f_tensor_elem(a,b,op,jbas) 
   implicit none 
   
   integer :: a,b,x1,x2,c1,c2
@@ -1222,8 +1290,7 @@ real(8) function f_tensor_elem(a,b,op,jbas)
 end function
 !=================================================================     
 !=================================================================
-real(8) function ph_tensor_elem(a,b,op,jbas)
-  ! returns matrix element if it is of the ph topology 
+real(8) function ph_tensor_elem(a,b,op,jbas) 
   implicit none 
   
   integer :: a,b,x1,x2,c1,c2
@@ -1245,7 +1312,7 @@ end function
 !==============================================================
 !==============================================================
 real(8) function v_elem(a,b,c,d,J,op,jbas) 
-  ! grabs the 2b matrix element you are looking for
+  ! grabs the matrix element you are looking for
   implicit none
   
   integer :: a,b,c,d,J,T,P,q,qx,c1,c2,N,pphh_int
@@ -1256,7 +1323,6 @@ real(8) function v_elem(a,b,c,d,J,op,jbas)
   type(sq_op) :: op 
   type(spd) :: jbas
   real(8) :: pre,pre_c
-  ! this common block is used for storage of matrix element location
   common /TBMEinfo/ c1_c,c2_c,q_c,qx_c,i1_c,i2_c,pre_c,fail_c  
   
  ! make sure the matrix element exists first
@@ -1364,7 +1430,7 @@ end function
 !==============================================================
 !==============================================================
 real(8) function pphh_elem(a,b,c,d,J,op,jbas) 
-  ! grabs the matrix element you are looking for, if pphh topology 
+  ! grabs the matrix element you are looking for
   implicit none
   
   integer :: a,b,c,d,J,T,P,q,qx,c1,c2,N
@@ -1476,12 +1542,13 @@ real(8) function pphh_elem(a,b,c,d,J,op,jbas)
       pphh_elem = op%mat(q)%gam(qx)%X(i1,i2) * pre
    end if 
    
- end function pphh_elem
+end function
 !==============================================================
 !==============================================================
 real(8) function tensor_elem(ax,bx,cx,dx,J1x,J2x,op,jbas) 
   ! grabs the matrix element you are looking for
-  ! from a tensor operator
+  ! right now it's not as versatile as v_elem because 
+  ! it doesn't know ahead of time what the symmetries are
   implicit none
   
   integer :: a,b,c,d,J1,J2,rank,T,P,q,qx,c1,c2,N,J1x,J2x
@@ -1851,11 +1918,11 @@ real(8) function pphh_tensor_elem(ax,bx,cx,dx,J1x,J2x,op,jbas)
    
    pphh_tensor_elem = op%tblck(q)%tgam(qx)%X(i1,i2) * pre *phase
     
- end function pphh_tensor_elem
+end function
 !==============================================================
 !==============================================================
-real(8) function T_twobody(a,b,c,d,J,T,op,jbas) 
-  !two body kinetic energy matrix element
+real(8) function T_twobody(a,b,c,d,J,op,jbas) 
+  ! grabs the matrix element you are looking for
   implicit none
   
   integer :: a,b,c,d,J,T,P,q,qx,c1,c2,N,i,JT,ax,bx,cx,dx
@@ -1869,81 +1936,78 @@ real(8) function T_twobody(a,b,c,d,J,T,op,jbas)
  
   !make sure the matrix element exists first
   
- ja = jbas%jj(a)
- jb = jbas%jj(b)
- jc = jbas%jj(c)
- jd = jbas%jj(d)
+  ja = jbas%jj(a)
+  jb = jbas%jj(b)
+  jc = jbas%jj(c)
+  jd = jbas%jj(d)
   
- la = jbas%ll(a)
- lb = jbas%ll(b)
- lc = jbas%ll(c)
- ld = jbas%ll(d)
- 
- na = jbas%nn(a)
- nb = jbas%nn(b)
- nc = jbas%nn(c)
- nd = jbas%nn(d) 
- 
- if ( .not. ((triangle(ja,jb,J)) .and. (triangle (jc,jd,J))) ) then 
-    T_twobody = 0.d0
-    return
- end if 
- 
- pre = 1.d0 
- if (a == b) pre = pre * sqrt( 2.d0 )
- if (c == d) pre = pre * sqrt( 2.d0 )
- 
- sm1=0.d0
- sm2=0.d0
- sm3=0.d0
- sm4=0.d0
- 
- do i1 = 1,op%belowEF
-    i = jbas%holes(i1) 
-    ji = jbas%jj(i) 
-    
-    do JT = abs(ja-ji), ja +ji,2 
-       sm1 = sm1 + v_elem(a,i,c,i,JT,op,jbas) * (JT+1.d0)  
-    end do 
+  la = jbas%ll(a)
+  lb = jbas%ll(b)
+  lc = jbas%ll(c)
+  ld = jbas%ll(d)
+  
+  na = jbas%nn(a)
+  nb = jbas%nn(b)
+  nc = jbas%nn(c)
+  nd = jbas%nn(d) 
+  
+  if ( .not. ((triangle(ja,jb,J)) .and. (triangle (jc,jd,J))) ) then 
+     T_twobody = 0.d0
+     return
+  end if
+  
+  pre = 1.d0
+  if ( mod(J/2,2) == 0) then 
+     if (a == b) pre = pre * sqrt( 2.d0 )
+     if (c == d) pre = pre * sqrt( 2.d0 )
+  else
+     if ((a == b).or.(c==d)) then
+        T_twobody = 0.d0
+        return
+     end if
+  end if
+  
+  sm1=0.d0
+  sm2=0.d0
+  sm3=0.d0
+  sm4=0.d0
+  
+  ! do i1 = 1,op%belowEF
+  !    i = jbas%holes(i1) 
+  !    ji = jbas%jj(i) 
+     
+  !    do JT = abs(ja-ji), ja +ji,2 
+  !       sm1 = sm1 + v_elem(a,i,c,i,JT,op,jbas) * (JT+1.d0)  
+  !    end do
+     
+  !    do JT = abs(jb-ji), jb +ji,2 
+  !       sm2 = sm2 + v_elem(b,i,d,i,JT,op,jbas) * (JT+1.d0)  
+  !    end do
+     
+  !    do JT = abs(jb-ji), jb +ji,2 
+  !       sm3 = sm3 + v_elem(b,i,c,i,JT,op,jbas) * (JT+1.d0)  
+  !    end do
+     
+  !    do JT = abs(ja-ji), ja +ji,2 
+  !       sm4 = sm4 + v_elem(a,i,d,i,JT,op,jbas) * (JT+1.d0)  
+  !    end do
    
-    do JT = abs(jb-ji), jb +ji,2 
-       sm2 = sm2 + v_elem(b,i,d,i,JT,op,jbas) * (JT+1.d0)  
-    end do 
-
-    do JT = abs(jb-ji), jb +ji,2 
-       sm3 = sm3 + v_elem(b,i,c,i,JT,op,jbas) * (JT+1.d0)  
-    end do 
-
-    do JT = abs(ja-ji), ja +ji,2 
-       sm4 = sm4 + v_elem(a,i,d,i,JT,op,jbas) * (JT+1.d0)  
-    end do
-   
-    sm1 = sm1/(ja +1.d0)
-    sm4 = sm4/(ja +1.d0)
-    sm2 = sm2/(jb +1.d0)
-    sm3 = sm3/(jb +1.d0)
- end do 
-
- x1 = 1.d0
- x2 = 1.d0 
- x3 = 1.d0 
- x4 = 1.d0 
-
- if ((ja == jc).and.(la==lc).and.(na==nc)) x1 = 0.d0
- if ((ja == jd).and.(la==ld).and.(na==nd)) x3 = 0.d0
- if ((jb == jd).and.(lb==ld).and.(nb==nd)) x2 = 0.d0
- if ((jb == jc).and.(lb==lc).and.(nb==nc)) x4 = 0.d0
+  !    sm1 = sm1/(ja +1.d0)
+  !    sm4 = sm4/(ja +1.d0)
+  !    sm2 = sm2/(jb +1.d0)
+  !    sm3 = sm3/(jb +1.d0)
+  ! end do
  
- T_twobody = pre*(kron_del(b,d)*x1* (f_elem(a,c,op,jbas)-sm1) + &
-      kron_del(a,c)*x2 * (f_elem(b,d,op,jbas)-sm2) - &
-      (-1)** ( (ja + jb - J)/2 ) * x3* kron_del(a,d) * (f_elem(b,c,op,jbas)-sm3) - &
-      (-1)** ( (jc + jd - J)/2 ) * x4* kron_del(b,c) * (f_elem(a,d,op,jbas)-sm4))
- 
-end function T_twobody
+  T_twobody = (kron_del(b,d)* (f_elem(a,c,op,jbas)-sm1) + &
+       kron_del(a,c) * (f_elem(b,d,op,jbas)-sm2) - &
+       (-1)** ( (ja + jb - J)/2 ) *  kron_del(a,d) * (f_elem(b,c,op,jbas)-sm3) - &
+       (-1)** ( (jc + jd - J)/2 ) *  kron_del(b,c) * (f_elem(a,d,op,jbas)-sm4))
+  
+end function 
 !=====================================================
 !=====================================================
 real(8) function T_elem(a,b,op,jbas) 
-  ! kinetic energy matrix element
+  ! grabs the matrix element you are looking for
   implicit none
   
   integer :: a,b,c,d,J,T,P,q,qx,c1,c2,N,i,JT
@@ -1985,7 +2049,7 @@ end function
 !=====================================================
 !=====================================================
 real(8) function v_same(op) 
-  !produces the matrix element of op which is in the exact same position 
+  !produces the matrix element of op which is in the exact position 
   !as the one obtained from the previous call of v_elem 
   
   integer :: c1_c,c2_c,q_c,qx_c,i1_c,i2_c
@@ -2026,20 +2090,20 @@ real(8) function twobody_monopole(a,b,ja,jb,H,jbas)
 end function 
 !=====================================================
 !=====================================================
-subroutine calculate_h0_harm_osc(hw,jbas,H,Htype) 
+subroutine calculate_h0_harm_osc(jbas,H,Htype) 
   ! fills out the one body piece of the hamiltonian
   implicit none 
   
   integer,intent(in) :: Htype
-  real(8),intent(in) :: hw
   integer :: i,j,mass,c1,c2,cx
   integer :: ni,li,ji,nj,lj,jj,tzi,tzj,AX
-  real(8) :: kij,T,beta,cmhw
+  real(8) :: kij,T,beta,cmhw,hw
   type(sq_op) :: H 
   type(spd) :: jbas
  
   !Htype =  |[1]: T - Tcm + V |[2]: T + Uho + V |[3]: T+V | 
 
+  hw = jbas%hw
   AX = H%belowEF
   mass = H%Aprot + H%Aneut
   
@@ -2695,6 +2759,23 @@ subroutine add_sp_mat(A,ax,B,bx,C)
      C%blkM(q)%matrix = ax*A%blkM(q)%matrix + bx*B%blkM(q)%matrix
   end do 
 
+end subroutine add_sp_mat
+!==========================================
+!==========================================  
+subroutine transpose_sp_mat(A,AT) 
+  ! use all of the information about H to make 
+  ! an empty block matrix of the same size
+  implicit none 
+  
+  type(full_sp_block_mat) :: A,AT
+  integer :: q
+
+  call duplicate_sp_mat(A,AT) 
+  do q = 1, A%blocks
+     if (A%map(q) == 0) cycle
+     AT%blkM(q)%matrix = transpose(A%blkM(q)%matrix)
+  end do 
+
 end subroutine
 !=====================================================
 subroutine deallocate_sq_op(op) 
@@ -2899,7 +2980,6 @@ end subroutine duplicate_sq_op
 !=====================================================
 !=====================================================
 subroutine deallocate_non_excitation(Op,yes)
-  ! deallocate all of the non-excitation pieces of a ladder operator 
   implicit none 
   
   type(sq_op) :: Op 
@@ -2947,11 +3027,10 @@ subroutine copy_sq_op(H,op)
      
   end do 
   
-end subroutine copy_sq_op
+end subroutine 
 !======================================================
 !======================================================
-subroutine copy_rank0_to_tensor_format(A,B,jbas)
-  !does what it says
+subroutine copy_rank0_to_tensor_format(A,B,jbas) 
   implicit none
   
   type(spd) :: jbas
@@ -3004,9 +3083,15 @@ subroutine write_umat(C)
   if (prefix(1:8) == 'testcase') return  
   
   do i = 1,200
-     if (prefix(i:i+1) == 'hw') exit
+     if (prefix(i-3:i+1) == 'hwHO0') exit 
   end do
 
+  if ( i > len(trim(prefix))) then
+     do i = 1,200
+        if (prefix(i:i+1) == 'hw') exit 
+     end do
+  end if
+     
   open(unit=77,file=trim(scratch)//trim(adjustl(prefix(1:i+3)))//'_umat.bin',&
        form = 'unformatted', &
        access = 'stream') 
@@ -3033,8 +3118,15 @@ subroutine read_umat(C,jbas)
   if (prefix(1:8) == 'testcase') return  
   
   do i = 1,200
-     if (prefix(i:i+1) == 'hw') exit
+     if (prefix(i-3:i+1) == 'hwHO0') exit
   end do
+
+  if ( i > len(trim(prefix))) then
+     do i = 1,200
+        if (prefix(i:i+1) == 'hw') exit 
+     end do
+  end if
+
 
   open(unit=77,file=trim(scratch)//trim(adjustl(prefix(1:i+3)))//'_umat.bin',&
        form = 'unformatted', &
@@ -3056,14 +3148,21 @@ subroutine write_twobody_operator(H,stage)
   real(8),allocatable,dimension(:):: outvec 
   character(*),intent(in) :: stage 
   character(200) :: prefix2,stringout
-  integer(c_int) :: rx,filehandle
+  type(c_ptr) :: rx,filehandle
   logical :: isthere
   
   if (prefix(1:8) == 'testcase') return  
 
   do i = 1,200
-     if (prefix(i:i+1) == 'hw') exit
+     if (prefix(i-3:i+1) == 'hwHO0') exit
   end do
+
+  if ( i > len(trim(prefix))) then
+     do i = 1,200
+        if (prefix(i:i+1) == 'hw') exit 
+     end do
+  end if
+
   
   prefix2(1:i+3)=prefix(1:i+3) 
   print*, 'Writing normal ordered interaction to ',&
@@ -3096,6 +3195,18 @@ subroutine write_twobody_operator(H,stage)
   write(77) outvec 
   close(77) 
   
+  
+  ! filehandle = gzOpen(trim(scratch)//trim(adjustl(prefix2(1:i+3)))//&
+  !      '_'//stage//'_normal_ordered.gz'//achar(0),'w'//achar(0)) 
+  
+  ! do q =1,neq
+  !    write(stringout(1:20),'(e20.14)') outvec(q)
+  !    stringout = adjustl(trim(adjustl(stringout(1:20)))//' XXXX')
+  !    call write_gz(filehandle,stringout)    
+  ! end do
+   
+  ! rx = gzClose(filehandle) 
+
 end subroutine write_twobody_operator
 !======================================================
 !======================================================
@@ -3107,16 +3218,22 @@ subroutine write_omega_checkpoint(H,s)
   real(8),allocatable,dimension(:):: outvec 
   real(8),intent(in) :: s
   character(200) :: prefix2,stringout
-  integer(c_int) :: rx,filehandle
+  type(c_ptr) :: rx,filehandle
   logical :: isthere
   character(6) :: s_position 
 
   if (prefix(1:8) == 'testcase') return  
 
   do i = 1,200
-     if (prefix(i:i+1) == 'hw') exit
+     if (prefix(i-3:i+1) == 'hwHO0') exit
   end do
-  
+
+  if ( i > len(trim(prefix))) then
+     do i = 1,200
+        if (prefix(i:i+1) == 'hw') exit 
+     end do
+  end if
+
   write(s_position,'(f6.3)') s
   
   prefix2(1:i+3)=prefix(1:i+3)
@@ -3149,6 +3266,18 @@ subroutine write_omega_checkpoint(H,s)
   
   call vectorize(H,outvec) 
   
+  
+  ! filehandle = gzOpen(trim(scratch)//trim(adjustl(prefix2(1:i+11)))&
+  !      //'.gz'//achar(0),'w'//achar(0)) 
+  
+  ! do q =1,neq
+  !    write(stringout(1:20),'(e20.14)') outvec(q)
+  !    stringout = adjustl(trim(adjustl(stringout(1:20)))//' XXXX')
+  !    call write_gz(filehandle,stringout)    
+  ! end do
+   
+  ! rx = gzClose(filehandle) 
+
   open(unit=77,file=trim(scratch)//trim(adjustl(prefix2(1:i+11)))//'.bin',&
        form = 'unformatted', &
        access = 'stream') 
@@ -3193,7 +3322,7 @@ logical function read_omega_checkpoint(H,s)
   character(200) :: prefix2
   character(20) :: instring
   character(6) :: s_position 
-  integer(c_int) :: rx,filehandle
+  type(c_ptr) :: rx,filehandle
   real(8) :: ds
   logical :: isthere
 
@@ -3202,9 +3331,15 @@ logical function read_omega_checkpoint(H,s)
   if (prefix(1:8)=='testcase') return
 
   do i = 1,200
-     if (prefix(i:i+1) == 'hw') exit
+     if (prefix(i-3:i+1) == 'hwHO0') exit
   end do
 
+  if ( i > len(trim(prefix))) then
+     do i = 1,200
+        if (prefix(i:i+1) == 'hw') exit 
+     end do
+  end if
+ 
   ds = 0.5d0
   
   s = 95.5d0 
@@ -3246,7 +3381,17 @@ logical function read_omega_checkpoint(H,s)
   end do 
   H%neq = neq
   allocate(outvec(neq)) 
+   
+  ! filehandle = gzOpen(trim(scratch)//trim(adjustl(prefix2(1:i+11)))&
+  !      //'.gz'//achar(0),'r'//achar(0)) 
   
+  ! do q =1,neq
+  !    instring = read_normal_gz(filehandle) 
+  !    read(instring,'(e20.14)') outvec(q)
+  ! end do
+  
+  ! rx = gzClose(filehandle) 
+
   open(unit=77,file=trim(scratch)//trim(adjustl(prefix2(1:i+11)))//'.bin',&
        form = 'unformatted', &
        access = 'stream') 
@@ -3269,7 +3414,7 @@ logical function read_twobody_operator(H,stage)
   character(*),intent(in) :: stage 
   character(200) :: prefix2
   character(20) :: instring
-  integer(c_int) :: rx,filehandle
+  type(c_ptr) :: rx,filehandle
   logical :: isthere,isgz 
 
   read_twobody_operator = .true. 
@@ -3277,9 +3422,15 @@ logical function read_twobody_operator(H,stage)
   if (prefix(1:8) == 'testcase') return  
 
   do i = 1,200
-     if (prefix(i:i+1) == 'hw') exit
+     if (prefix(i-3:i+1) == 'hwHO0') exit
   end do
-  
+
+  if ( i > len(trim(prefix))) then
+     do i = 1,200
+        if (prefix(i:i+1) == 'hw') exit 
+     end do
+  end if
+
   prefix2(1:i+3)=prefix(1:i+3) 
   
   inquire(file=trim(playplace)//trim(adjustl(prefix2(1:i+3)))//&
@@ -3427,7 +3578,7 @@ end subroutine add_sq_op
 !=====================================================
 !=====================================================
 subroutine append_operator(B,bx,C) 
-  ! C + B*bx = C 
+  ! A*ax + B*bx = C 
   implicit none 
   
   type(sq_op) :: B,C
@@ -3581,7 +3732,7 @@ subroutine print_matrix(matrix)
   
 end subroutine print_matrix
 !===============================================  
-subroutine read_main_input_file(input,H,htype,HF,method,EXcalc,COM,R2RMS,&
+subroutine read_main_input_file(input,H,htype,HF,method,EXcalc,COM,R2RMS,obsname,&
      ME2J,ME2b,MORTBIN,hw,skip_setup,skip_gs,quads,trips,e3max)
   !read inputs from file
   implicit none 
@@ -3589,13 +3740,13 @@ subroutine read_main_input_file(input,H,htype,HF,method,EXcalc,COM,R2RMS,&
   character(200) :: input
   character(50) :: valence
   character(1) :: quads,trips
+  character(10) :: obsname
   type(sq_op) :: H 
   integer :: htype,jx,jy,Jtarg,Ptarg,excalc,com_int,rrms_int
-  integer :: method,Exint,ISTAT ,i,e3max
-  logical :: HF,COM,R2RMS,ME2J,ME2B,skip_setup,skip_gs,MORTBIN, found
-  real(8) :: hw
+  integer :: method,Exint,ISTAT ,i,e3max,hw
+  logical :: HF,COM,R2RMS,ME2J,ME2B,skip_setup,skip_gs,MORTBIN, found,nohw
 
-    
+
   input = adjustl(input) 
   if (trim(input) == '') then 
      print*, 'RUNNING TEST CASE: testcase.ini'
@@ -3628,17 +3779,19 @@ subroutine read_main_input_file(input,H,htype,HF,method,EXcalc,COM,R2RMS,&
   read(22,*) H%Aprot
   read(22,*)
   read(22,*) H%Aneut
-  read(22,*);read(22,*)
+  read(22,*); read(22,*)
   read(22,*) jx
-  read(22,*);read(22,*)
+  read(22,*); read(22,*)
   read(22,*) method,quads,trips
-  read(22,*);read(22,*)
+  read(22,*); read(22,*)
   read(22,*) excalc
   read(22,*)
   read(22,*) com_int
   read(22,*)
   read(22,*) rrms_int 
   read(22,*)
+  read(22,*) obsname
+  read(22,*) 
   read(22,*) eomfile
   read(22,*)
   read(22,*) H%lawson_beta,H%com_hw
@@ -3650,11 +3803,38 @@ subroutine read_main_input_file(input,H,htype,HF,method,EXcalc,COM,R2RMS,&
   read(22,*) writing_decoupled,reading_decoupled
   read(22,*) 
   read(22,*) writing_omega,reading_omega
-    
+  read(22,*) 
+  read(22,*) writing_human
+
+  nohw = .true.
+  do i =1, 200
+     if (prefix(i:i+1) == "hw" ) then
+        nohw =.false.
+        if (prefix(i+2:i+3) == "HO") then
+           if (prefix(i+6:i+6)=="_") then
+              STOP 'Heiko format prefix "hwHO" must be followed by three digits, e.g. "hwHO020"' 
+           end if
+           if (i+6 > len(trim(adjustl(prefix)))) then
+              STOP 'Heiko format prefix "hwHO" must be followed by three digits, e.g. "hwHO020"' 
+           end if
+
+        end if
+        exit
+     end if
+  end do
+        
   if (method .ne. 1) then 
      writing_omega = .false. 
      reading_omega = .false. 
   end if 
+
+  if (checkpointing .and. nohw) stop 'must have "hw" in file prefix for operator I/O'
+  if (writing_bare .and. nohw) stop 'must have "hw" in file prefix for operator I/O'
+  if (reading_bare .and. nohw) stop 'must have "hw" in file prefix for operator I/O'
+  if (writing_decoupled .and. nohw) stop 'must have "hw" in file prefix for operator I/O'
+  if (reading_decoupled .and. nohw) stop 'must have "hw" in file prefix for operator I/O'
+  if (writing_omega .and. nohw) stop 'must have "hw" in file prefix for operator I/O'
+  if (reading_omega .and. nohw) stop 'must have "hw" in file prefix for operator I/O'
   
   HF = .false. 
   if (jx == 1) HF = .true. 
@@ -3662,7 +3842,7 @@ subroutine read_main_input_file(input,H,htype,HF,method,EXcalc,COM,R2RMS,&
   if (com_int == 1) COM = .true.
   R2RMS = .false.
   if (rrms_int == 1) R2RMS = .true.
-  
+
   if (trim(adjustl(threebody_file))=='none') then 
      e3Max = 0
   end if 
@@ -3695,32 +3875,37 @@ subroutine read_main_input_file(input,H,htype,HF,method,EXcalc,COM,R2RMS,&
      end if 
   end if 
   
+  inquire( file='../../hamiltonians/'//&
+       trim(adjustl(prefix))//'_bare' , exist = skip_setup )
+
+  if (EXcalc .ne. 0) then 
+  inquire( file='../../hamiltonians/'//&
+       trim(adjustl(prefix))//'_gs_decoup' , exist = skip_gs )
+  else 
+     skip_gs = .false.
+  end if
+
   ! figure out where the TBME and SP files are....
 
   TBME_DIR = find_file('IMSRG_ME_FILES',trim(intfile)) 
-  SP_DIR = find_file('IMSRG_SP_FILES',trim(spfile)) 
+  SP_DIR = find_file('IMSRG_SP_FILES',trim(spfile))
 
-  call getenv("IMSRG_OUTPUT",OUTPUT_DIR)
-  if (trim(adjustl(OUTPUT_DIR))=='') then
-     OUTPUT_DIR = './'
-  else     
-     OUTPUT_DIR = trim(adjustl(OUTPUT_DIR))//'/'
-  end if
-
-  call getenv("IMSRG_SCRATCH",scratch)
-  if (trim(adjustl(SCRATCH))=='') then
-     SCRATCH = './'
-  else
-     scratch = trim(adjustl(scratch))//'/'
+  if (e3max .ne. 0) then  
+     threebody_file=adjustl(threebody_file)
+     THREE_DIR = find_file('IMSRG_ME_FILES',trim(threebody_file)) 
   end if
   
-  call getenv("IMSRG_OPERATOR_DUMP",playplace)
 
-  if (trim(adjustl(playplace))=='') then
-     playplace = './'
-  else
-     playplace = trim(adjustl(playplace))//'/'
-  end if
+
+  call getenv("IMSRG_OUTPUT",OUTPUT_DIR)
+  OUTPUT_DIR = trim(adjustl(OUTPUT_DIR))//'/'
+  call getenv("IMSRG_SCRATCH",scratch)
+  scratch = trim(adjustl(scratch))//'/'
+  call getenv("IMSRG_OPERATOR_DUMP",playplace)
+  playplace = trim(adjustl(playplace))//'/'
+
+  obsname = adjustl(obsname)
+  
 end subroutine read_main_input_file
 !=======================================================  
 !=======================================================
@@ -3740,7 +3925,7 @@ end function
 !=================================================
 !=================================================
 subroutine vectorize(rec,vout)
-  !!! maps sq_out to vector
+  !!! maps sq_op to vector
   implicit none 
 
   integer ::  i,j,k,l,gx,Atot,Ntot
@@ -3803,7 +3988,7 @@ end subroutine
 !=================================================
 !=================================================
 subroutine repackage(rec,vout)
-  !!! maps vector to sq_out
+  !!! reads sq_op from vector
   implicit none 
 
   integer :: i,j,k,l,gx,Atot,Ntot
@@ -3866,7 +4051,7 @@ subroutine repackage(rec,vout)
 end subroutine 
 !===============================================================
 !===============================================================  
-real(8) function mat_frob_norm(op)
+real(8) function mat_frob_norm(op) 
   ! frobenius norm
   implicit none 
   
@@ -3942,8 +4127,40 @@ real(8) function twobd_frob_norm(op)
 end function 
 !===============================================================
 !===============================================================
-real(8) function mbpt2(H,jbas)
-  ! many body perturbation theory second order
+subroutine write_excited_states(steps,s,TDA,e0,un) 
+  implicit none
+  
+  integer :: steps,sm,q,r,un
+  real(8) :: s,e0
+  type(full_sp_block_mat) :: TDA
+  real(8),allocatable,dimension(:) :: vec
+  character(5) :: num 
+  
+  
+  sm = 0
+  do q = 1,TDA%blocks
+     sm = sm + TDA%map(q)
+  end do 
+  
+  allocate(vec(sm)) 
+  
+  r = 1
+  do q = 1,TDA%blocks 
+     if ( TDA%map(q) > 0 ) then 
+        vec(r:r+TDA%map(q)-1) = TDA%blkM(q)%eigval !+e0
+        r = r + TDA%map(q)
+     end if
+  end do 
+  
+  sm = sm + 1
+  write(num,'(I5)') sm 
+  num = adjustl(num) 
+  
+  write(un,'(I6,'//trim(num)//'(e14.6))') steps,s,vec
+
+end subroutine 
+!=====================================
+real(8) function mbpt2(H,jbas) 
   implicit none 
   
   integer :: i,j,k,l,II,JJ,q
@@ -3993,8 +4210,7 @@ subroutine write_tilde_from_Rcm(rr)
 end subroutine 
 !===================================================================
 !===================================================================  
-subroutine enumerate_three_body(threebas,jbas)
-  ! count all possible three body states
+subroutine enumerate_three_body(threebas,jbas) 
   implicit none 
   
   type(spd) :: jbas
@@ -4663,11 +4879,7 @@ character(500) function find_file( directory_name,file_name)
   ! directory_name = adjustl(directory_name)
   
   call GETENV(trim(directory_name),path)
-  if (trim(adjustl(path))=='') then
-     path = './'
-  else
-     path=adjustl(path)
-  end if
+  path=adjustl(path)
   
   istart = 1
   do while (.true.)

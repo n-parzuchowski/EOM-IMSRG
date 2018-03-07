@@ -817,7 +817,7 @@ subroutine dTz_tensor_product_222_pp_hh(AA,BB,CC,jbas)
                     ! Apppp . Bpphh 
                     
                     al_off = d6ji(rank_a,rank_b,rank_c,J2,J1,J3)*&
-                         (-1)**(rank_c/2)*sqrt(rank_c+1.d0)* AA%herm 
+                         (-1)**((J2+J3+rank_c)/2)*sqrt(rank_c+1.d0)* AA%herm 
                     
                     bet_off = 1.d0
 

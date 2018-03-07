@@ -6,7 +6,7 @@ interface
    function gzOpen( path, mode ) bind(C, NAME='gzopen') 
      use, intrinsic :: ISO_C_BINDING
      character(c_char) :: path(*),mode(*) 
-     integer(c_int) :: gzOpen 
+     type(c_ptr) :: gzOpen 
    end function
 end interface
 
@@ -16,15 +16,16 @@ interface
      use, intrinsic :: ISO_C_BINDING
      character(c_char) :: buf(*)  
      type(c_ptr) :: gzGets 
-     integer(c_int),value :: file,len
+     integer(c_int),value :: len
+     type(c_ptr),value :: file
    end function
 end interface
 
 interface 
    function gzClose( file ) bind(C, NAME='gzclose') 
      use, intrinsic :: ISO_C_BINDING
-     integer(c_int) :: gzClose
-     integer(c_int),value :: file
+     type(c_ptr) :: gzClose
+     type(c_ptr),value :: file
    end function
 end interface
 
@@ -33,9 +34,10 @@ interface
    function gzWrite( file , buf , len) bind(C, NAME='gzwrite') 
      use, intrinsic :: ISO_C_BINDING
      character(c_char) :: buf(*) 
-     integer(c_int) :: gzWrite
-     integer(c_int),value :: file,len
-   end function
+     type(c_ptr) :: gzWrite
+     integer(c_int),value :: len
+     type(c_ptr),value :: file
+   end function gzWrite
 end interface
 
 contains
@@ -46,8 +48,8 @@ character(52) function read_morten_gz(handle)
   ! THAT'S IT. IT's 52 CHARACTERS LONG.   
   implicit none
   
-  integer(c_int) :: handle,sz
-  type(c_ptr) :: buf
+  integer(c_int) :: sz
+  type(c_ptr) :: buf,handle
   character(kind=C_CHAR,len=200) :: buffer
   
   sz=200 
@@ -62,8 +64,8 @@ character(20) function read_normal_gz(handle)
   ! THAT'S IT. IT's 52 CHARACTERS LONG.   
   implicit none
   
-  integer(c_int) :: handle,sz
-  type(c_ptr) :: buf
+  integer(c_int) :: sz
+  type(c_ptr) :: buf,handle
   character(kind=C_CHAR,len=200) :: buffer
   
   sz=200 
@@ -77,8 +79,8 @@ subroutine write_gz(handle,string)
   implicit none
   
   character(*) :: string
-  integer(c_int) :: handle,sz
-  integer(c_int) :: buf
+  integer(c_int) :: sz
+  type(c_ptr) :: buf,handle
   integer :: xxx
   character(kind=C_CHAR,len=200) :: buffer
   

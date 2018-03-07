@@ -4,10 +4,10 @@ module adams_ode
     
 contains
 
-subroutine euler_ode( f,neqn,y,rx,jbas,t,dt) 
+subroutine euler_ode( f,build_Gen,neqn,y,rx,jbas,t,dt) 
   implicit none
 
-  external f
+  external f , build_gen
   integer :: neqn 
   real(8) :: t,dt
   real(8),dimension(neqn) :: y,yp,z 
@@ -15,14 +15,14 @@ subroutine euler_ode( f,neqn,y,rx,jbas,t,dt)
   type(spd) :: jbas
 
 ! get derivatives  
-  call f(t,y,yp,rx,jbas) 
-  
+  call f(t,y,yp,rx,jbas,build_gen) 
+
 ! write rx as a vector
-  call vectorize(rx,yp) 
-  
+  call vectorize(rx,y) 
+
 ! euler step
-  z = yp + dt*y
-  
+  z = y + dt*yp
+
 ! overwrite rx 
   call repackage(rx,z)
   t = t +dt
@@ -202,7 +202,7 @@ subroutine ode ( f,gen,neqn, y, rx, jbas, t, tout, relerr, abserr, iflag, work, 
   type(spd) :: jbas
     
   if (isnan(sum(y))) then 
-     print*, 'ERROR: NaNs in the solver...'
+     print*, '$%*@!... NaNs in the solver...'
      stop 
   end if 
  
@@ -1028,6 +1028,9 @@ subroutine step ( x, y, f,gen, rx,jbas, neqn, h, eps, wt, start, hold, k, kold, 
       end if
 
       erk = erk + ( ( yp(l) - phi(l,1) ) / wt(l) )**2
+     ! if (isnan(yp(l))) print*, 'cow'
+     ! if (isnan(phi(l,1))) print*, 'sex'
+     ! if (wt(l) < 1e-9) print*, '$#%#...' 
     end do
    
     if ( 0 < km2 ) then
@@ -1060,6 +1063,12 @@ subroutine step ( x, y, f,gen, rx,jbas, neqn, h, eps, wt, start, hold, k, kold, 
 !
 !  Test if the step was successful.
 !
+    if (isnan(err)) then 
+       print*, 'FUCK! err is NaN but cur_vec is fine!!!!'
+       print*, '.................'
+       print*, 'SHIT!!!!!!!!!!!'
+       stop
+    end if
     if ( err <= eps ) then
       exit
     end if

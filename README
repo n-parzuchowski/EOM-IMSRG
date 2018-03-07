@@ -10,7 +10,7 @@ excited state energies of said nuclei
 scalar observables of said nuclei, such as radii or monopole moments.
 transtion strengths ( B(E1,E2,E3...), B(M1,M2,M3...) , B(GT) ) and electromagnetic multipole moments (dipole, quadrupole, octupole... )  
 
-THIS CODE WAS WRITTEN BY NATHAN M. PARZUCHOWSKI, A GRADUATE STUDENT AT MICHIGAN STATE UNIVERSITY.  nathan.parz@gmail.com 
+THIS CODE WAS WRITTEN BY NATHAN M. PARZUCHOWSKI, AT MICHIGAN STATE UNIVERSITY AND OHIO STATE UNIVERSITY.  nathan.parz@gmail.com 
 
 ELEMENTS OF THIS CODE WERE INSPIRED BY:
 Scott Bogner (MSU) 
@@ -140,7 +140,7 @@ hole_scheme_hk in your SP_INPUT directory.
 sample_eMax08_hw24.me2j.gz in your  ME_INPUT directory.
 
 ----
-hk14.sps specifies the single particle basis, the format is
+hk4.sps specifies the single particle basis, the format is
 
 label   n   l   2j  tz  energy
 
@@ -159,8 +159,11 @@ This code is not awesome enough to tell you exactly what you screwed up when you
 might have to go digging. The relevant subroutines are "read_main_input_file" in basic_IMSRG.f90 and "read_eom_file" in EOM_IMSRG.f90.
 Alternatively, you can just keep testcase.ini and standard.eom intact for reference, and you can compare them when things go haywire.
 
+----
+
+I've also included a script "construct_jobs.py" which will construct input and pbs files.  
+
+
 ---------------------------------------------------------------------------------------------------------------
-So much to write... let me know if I missed anything! 
-
-
+let me know if I missed anything! 
 

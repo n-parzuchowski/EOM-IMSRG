@@ -1,4 +1,3 @@
-! I use this to test my commutator expressions. It's not in good shape, but feel free to mess around with it. 
 module brute_force_testing
   use cross_coupled
   use isospin_operators
@@ -1264,21 +1263,21 @@ subroutine test_tensor_product(jbas,h1,h2,rank_a,rank_b,rank_c,dpar_a,dpar_b,dpa
   print*, 'TIME:',t2-t1
 
   
-  do a =  1, jbas%total_orbits
-     if (jbas%con(a) == 1) cycle
-     do b = 1, jbas%total_orbits
-        if (jbas%con(b) == 0) cycle
+  ! do a =  1, jbas%total_orbits
+  !    if (jbas%con(a) == 1) cycle
+  !    do b = 1, jbas%total_orbits
+  !       if (jbas%con(b) == 0) cycle
 
-        val = EOM_tensor_prod_1body(AA,BB,a,b,rank_c,jbas)
-        if (abs(val-f_tensor_elem(a,b,OUT,jbas)) > 1e-10) then
-           print*, 'at: ',a,b
-           print*, val, f_tensor_elem(a,b,OUT,jbas),f_tensor_elem(a,b,OUT,jbas)/val  
-           STOP 'ONE BODY FAILURE'  
-        end if
+  !       val = EOM_tensor_prod_1body(AA,BB,a,b,rank_c,jbas)
+  !       if (abs(val-f_tensor_elem(a,b,OUT,jbas)) > 1e-10) then
+  !          print*, 'at: ',a,b
+  !          print*, val, f_tensor_elem(a,b,OUT,jbas),f_tensor_elem(a,b,OUT,jbas)/val  
+  !          STOP 'ONE BODY FAILURE'  
+  !       end if
 
-        print*, 'success:', a,b , val 
-     end do
-  end do
+  !       print*, 'success:', a,b , val 
+  !    end do
+  ! end do
        
 !  !do a = 12, jbas%total_orbits
      
@@ -1316,12 +1315,12 @@ subroutine test_tensor_product(jbas,h1,h2,rank_a,rank_b,rank_c,dpar_a,dpar_b,dpa
               
               do J1 = j1min,j1max,2
                  do J2 = j2min,j2max,2
-                    if (.not. (triangle(J1,J2,rank_c))) cycle
                     
+                    if (.not. (triangle(J1,J2,rank_c))) cycle
+                    print*, a,b,c,d,J1,J2
                     val = EOM_tensor_prod_2body(AA,BB,a,b,c,d,J1,J2,rank_c,jbas)
-                    print*, 'at:',a,b,c,d, 'J:', J1,J2 ,val,tensor_elem(a,b,c,d,J1,J2,OUT,jbas)                       
+                    print*, 'at:', a, b, c, d, 'J:', J1, J2, val, tensor_elem(a,b,c,d,J1,J2,OUT,jbas)                       
                     if (abs(val-tensor_elem(a,b,c,d,J1,J2,OUT,jbas)) > 1e-8) then
-                       print*, tensor_elem(a,b,c,d,J1,J2,OUT,jbas)/val
                        !print*, 'at:',a,b,c,d, 'J:', J1,J2 ,val,tensor_elem(a,b,c,d,J1,J2,OUT,jbas)                       
                        STOP 'TWO BODY FAILURE'  
                     end if
@@ -1412,7 +1411,7 @@ subroutine test_tensor_dTZ_product(jbas,h1,h2,rank_a,rank_b,rank_c,dpar_a,dpar_b
   !    end do
   ! end do
 
-
+! TIT
   iii = 0 
   do while (iii < 55)  
      call random_number(vv)
@@ -1446,7 +1445,6 @@ subroutine test_tensor_dTZ_product(jbas,h1,h2,rank_a,rank_b,rank_c,dpar_a,dpar_b
         do J2 = j2min,j2max,2
            print*, J1,J2,rank_c
            if (.not. (triangle(J1,J2,rank_c))) cycle
-           
            val = EOM_dTz_tensor_prod_2body(AA,BB,a,b,c,d,J1,J2,rank_c,jbas)
 
            print*, 'at:',a,b,c,d, 'J:', J1,J2 ,val,iso_ladder_elem(a,b,c,d,J1,J2,OUT,jbas)                       
@@ -2829,7 +2827,7 @@ real(8) function EOM_tensor_prod_2body(AA,BB,p1,p2,h1,h2,J1,J2,rank_c,jbas)
   integer :: rank_a,rank_b,mu_a,mu_b,mu_c,bx,jx,mb,mj,jp2,jh2
   type(spd) :: jbas
   type(sq_op) :: AA,BB 
-  real(8) :: sm ,d6ji,sx,sm1,sm2 ,dcgi
+  real(8) :: sm ,d6ji,sx,sm1,sm2,sm3 ,dcgi
 
   rank_b = BB%rank
   rank_a = AA%rank
@@ -2853,12 +2851,24 @@ real(8) function EOM_tensor_prod_2body(AA,BB,p1,p2,h1,h2,J1,J2,rank_c,jbas)
               do mp1 = -1*jp1,jp1,2
                  do mp2 = -1*jp2,jp2,2
 
-
+                    
                     do mu_c = -1*rank_c,rank_c,2                        
                        do mu_a = -1*rank_a,rank_a,2
                           do mu_b = -1*rank_b,rank_b,2
-                             sm1 = 0.d0
 
+
+                             sm1 = f_tensor_mscheme(p1,mp1,h1,mh1,mu_a,AA,jbas)*&
+                                  f_tensor_mscheme(p2,mp2,h2,mh2,mu_b,BB,jbas)
+                             
+                             sm1 = sm1 - f_tensor_mscheme(p2,mp2,h1,mh1,mu_a,AA,jbas)*&
+                                  f_tensor_mscheme(p1,mp1,h2,mh2,mu_b,BB,jbas)
+                             
+                             sm1 = sm1 + f_tensor_mscheme(p2,mp2,h2,mh2,mu_a,AA,jbas)*&
+                                  f_tensor_mscheme(p1,mp1,h1,mh1,mu_b,BB,jbas)
+                             
+                             sm1 = sm1 - f_tensor_mscheme(p1,mp1,h2,mh2,mu_a,AA,jbas)*&
+                                  f_tensor_mscheme(p2,mp2,h1,mh1,mu_b,BB,jbas)
+                             
                              do ax = 1, parts
                                 a = jbas%parts(ax)
                                 ja = jbas%jj(a) 
@@ -3033,7 +3043,7 @@ real(8) function EOM_dTz_tensor_prod_2body(AA,BB,p1,p2,h1,h2,J1,J2,rank_c,jbas)
   jh1 = jbas%jj(h1) 
   jh2 = jbas%jj(h2)
 
-
+  !!! ASS 
   !  !$OMP PARALLEL DO DEFAULT(FIRSTPRIVATE) REDUCTION(+:sm)
   do M1 = -1*J1,J1,2
      do M2 = -1*J2,J2,2
@@ -3048,6 +3058,19 @@ real(8) function EOM_dTz_tensor_prod_2body(AA,BB,p1,p2,h1,h2,J1,J2,rank_c,jbas)
                        do mu_a = -1*rank_a,rank_a,2
                           do mu_b = -1*rank_b,rank_b,2
                              sm1 = 0.d0
+
+                             sm1 = f_tensor_mscheme(p1,mp1,h1,mh1,mu_a,AA,jbas)*&
+                                  f_iso_ladder_mscheme(p2,mp2,h2,mh2,mu_b,BB,jbas)
+
+                             sm1 = sm1 - f_tensor_mscheme(p2,mp2,h1,mh1,mu_a,AA,jbas)*&
+                                  f_iso_ladder_mscheme(p1,mp1,h2,mh2,mu_b,BB,jbas)
+
+                             sm1 = sm1 + f_tensor_mscheme(p2,mp2,h2,mh2,mu_a,AA,jbas)*&
+                                  f_iso_ladder_mscheme(p1,mp1,h1,mh1,mu_b,BB,jbas)
+
+                             sm1 = sm1 - f_tensor_mscheme(p1,mp1,h2,mh2,mu_a,AA,jbas)*&
+                                  f_iso_ladder_mscheme(p2,mp2,h1,mh1,mu_b,BB,jbas)
+
 
                              do ax = 1, parts
                                 a = jbas%parts(ax)
@@ -3206,7 +3229,7 @@ real(8) function scalar_tensor_2body_comm(AA,BB,a,b,c,d,J1,J2,jbas)
   integer :: ja,jb,jc,jd,Jtot,JTM,totorb,rank
   type(spd) :: jbas
   type(sq_op) :: AA,BB 
-  real(8) :: sm,coef9,d6ji,pre,smx,sm1,sm2,sm3,sm4
+  real(8) :: sm,coef9,d6ji,pre,ass,smx,sm1,sm2,sm3,sm4
 
   rank = BB%rank  
   sm = 0.d0 
@@ -3380,7 +3403,7 @@ real(8) function scalar_tensor_iso2body_comm(AA,BB,a,b,c,d,J1,J2,jbas)
   type(spd) :: jbas
   type(sq_op) :: AA
   type(iso_operator) :: BB 
-  real(8) :: sm,coef9,d6ji,pre,smx,sm1,sm2,sm3,sm4
+  real(8) :: sm,coef9,d6ji,pre,ass,smx,sm1,sm2,sm3,sm4
   real(8) :: m1,m2,m3,m4
   
   rank = BB%rank  

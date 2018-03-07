@@ -769,7 +769,7 @@ end subroutine
 !=================================================================
 !=================================================================
  subroutine commutator_222_ph(LCC,RCC,RES,WCC,jbas) 
-   ! VERIFIED ph channel 2body commutator.
+   ! VERIFIED ph channel 2body commutator. DFWT! 
    implicit none 
   
    type(spd) :: jbas
@@ -794,7 +794,6 @@ end subroutine
       nb = LCC%nph(q)
       
       rinx = LCC%rlen(q)  
-      
       if (nb * rinx == 0) cycle
       
       call dgemm('N','T',rinx,rinx,nb,al,LCC%CCX(q)%X,rinx,&
@@ -1282,10 +1281,10 @@ real(8) function commutator_223_single(L,R,ip,iq,ir,is,it,iu,Jtot,jpq,jst,jbas)
        
   commutator_223_single = smtot
 
-end function commutator_223_single
+ end function
 
   
-end module commutators
+end module 
   
   
   

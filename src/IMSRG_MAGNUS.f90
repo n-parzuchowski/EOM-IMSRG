@@ -5,7 +5,7 @@ module IMSRG_MAGNUS
   use HF_mod 
   implicit none 
 
-  !interface such that dTZ operators and sq_op use the same function
+
   interface transform_observable_BCH
      module procedure BCH_ISOTENSOR,transform_sq_op_BCH
   end interface transform_observable_BCH
@@ -16,21 +16,18 @@ subroutine magnus_decouple(HS,G,jbas,quads,trips,build_generator)
   ! runs IMSRG using magnus expansion method
   implicit none 
   
-  real(8),parameter :: conv_crit = 1d-6
+  integer :: Atot,Ntot,nh,np,nb,q,steps,i,j,chk
   type(spd) :: jbas
+  type(tpd),allocatable,dimension(:) :: threebas
   type(sq_op) :: H,G,HS,AD
   type(sq_op) :: DG,CR
   type(cc_mat) :: GCC,ADCC,WCC 
-  real(8) :: ds,s,sx,Eold,E_mbpt2,crit,nrm1,nrm2,dcgi00
+  real(8) :: ds,s,sx,Eold,E_mbpt2,crit,nrm1,nrm2,wTs(2),Ecm(3),corr,dcgi00,xxx
   real(8) :: omp_get_wtime,t1,t2
   character(1) :: quads,trips
-  integer :: Atot,Ntot,nh,np,nb,q,steps,i,j,chk
-  logical :: trip_calc,xxCR,not_chkpoint_restart,first
-
-  ! dummy variable for function to build generator
+  logical :: trip_calc,xxCR,chkpoint_restart,first
   external :: build_generator 
-
-  ! need to make some new objects to hold auxillary operators 
+  
   HS%neq = 1
   call duplicate_sq_op(HS,H) !evolved hamiltonian
   if (.not. allocated(G%mat)) call duplicate_sq_op(HS,G) !magnus operator
@@ -40,119 +37,111 @@ subroutine magnus_decouple(HS,G,jbas,quads,trips,build_generator)
   G%herm = -1 
   DG%herm = -1 
 
-  ! construct generator of the transformation
   call build_generator(HS,DG,jbas)  
   call copy_sq_op(HS,H) 
-
-  ! start parameters
+  
   s = 0.d0 
-  ds = 0.5d0
-  steps = 0
+    
+  if (HS%lawson_beta < 3.0) then 
+     ds = 0.5d0
+  else if (HS%lawson_beta < 6.0) then 
+     ds = 0.5d0
+  else
+     ds = 0.1d0
+  end if 
 
-  ! relevant for checkpointing
-  ! if we are checkpointing we write
-  ! omega to file every "chk" steps and then resubmit the job. 
-  if (HS%eMax.ge.14) then
-     ! eMax=14 is the largest I've done, and it's pretty demanding.
-     ! this takes 10 to 15 hours depending on a variety of factors
-     chk = 8
+  crit = 10.
+  steps = 0
+  
+  if (HS%eMax==14) then 
+     chk = 12
+  else if (HS%eMax > 14 ) then 
+     chk = 4 
   else
      chk = 24
   end if 
   
   if (checkpointing) then 
-     not_chkpoint_restart = read_omega_checkpoint(G,sx) 
+     chkpoint_restart = read_omega_checkpoint(G,sx) 
   else
-     not_chkpoint_restart = .true. 
+     chkpoint_restart = .true. 
   end if 
   
-  if (not_chkpoint_restart) then 
+  if (chkpoint_restart) then 
   
-     ! start from the beginning.
+
      open(unit=36,file=trim(OUTPUT_DIR)//&
        trim(adjustl(prefix))//'_0b_magnus_flow.dat')
+
      
-     Eold=0.
-     E_mbpt2 = mbpt2(HS,jbas) ! many body perturbation theory at second order
-     crit=abs(E_mbpt2) !convergence is based on the magnitude of MBPT(2), which is resummed into E_HF,
-     first = .false.  
      write(36,'(I6,4(e15.7))') steps,s,H%E0,HS%E0+E_mbpt2,crit
      write(*,'(I6,4(e15.7))') steps,s,HS%E0,HS%E0+E_mbpt2,crit
+     Eold=0.
+     E_mbpt2 = mbpt2(HS,jbas) 
+     crit=abs(E_mbpt2)
+     first = .false.  
   else 
 
      ! CHECKPOINT RESTART
      open(unit=36,file=trim(OUTPUT_DIR)//&
        trim(adjustl(prefix))//'_0b_magnus_flow.dat',position='append')
-
-     ! trnasform to where we left off 
+     
      call BCH_EXPAND(HS,G,H,jbas,quads) 
      call build_generator(HS,DG,jbas)  
-
-     ! advance to the current value of s 
+     
      s= sx
   
      steps = nint(sx/ds)
      first = .true. 
   end if 
   
-
-  do while (crit > conv_crit) 
+  do while (crit > 1e-6) 
  
      steps = steps + 1
-
-     ! if checkpointing and you reach a checkpoint, write and quit. 
+ 
      if (checkpointing) then 
         if (mod(steps,chk)==0) then 
-           if (first) then
-              ! don't write and quit at the first iteration.               
+           if (first) then 
               first = .false.
            else
               call write_omega_checkpoint(G,s)
            end if
         end if
      end if 
-
-     ! magnus expansion to calculate transformation derivative 
+ 
      call MAGNUS_EXPAND(DG,G,AD,jbas)
-
-     ! euler solve the magnus differential equation
+ 
      call euler_step(G,DG,s,ds) 
 
-     ! apply the current transformation to H 
      call BCH_EXPAND(HS,G,H,jbas,quads) 
-
-     ! update generator 
+ 
      call build_generator(HS,DG,jbas)   
-
-     
+ 
      E_mbpt2 = mbpt2(HS,jbas) 
+ 
      crit = abs(E_mbpt2)  
 
      write(36,'(I6,4(e15.7))') steps,s,HS%E0,HS%E0+E_mbpt2,crit
-     write(*,'(I6,4(e15.7))') steps,s,HS%E0,HS%E0+E_mbpt2,crit
-     
+     write(*,'(I6,5(e15.7))') steps,s,HS%E0,HS%E0+E_mbpt2,crit
   end do
-
-  ! HS is now the transformed hamiltonian
-  ! exp_omega now holds the IM-SRG unitary transformation. 
+  
 end subroutine magnus_decouple
 !=========================================================================
 !=========================================================================
 subroutine transform_sq_op_BCH(Op,G,jbas,quads)
-  ! BCH expansion for some operator
   implicit none 
   
   type(spd) :: jbas
   type(sq_op) :: Op,G,Oevolved
   character(1) :: quads
-  
+    
   if (Op%rank > 0) then      
      call BCH_TENSOR(G,Op,jbas,quads)    
   else
      call duplicate_sq_op(Op,Oevolved) 
      call BCH_EXPAND(Oevolved,G,Op,jbas,quads)
      call copy_sq_op(Oevolved,Op) 
-  end if
+  end if 
   
 end subroutine transform_sq_op_BCH
 !=========================================================================
@@ -202,7 +191,7 @@ subroutine BCH_EXPAND(HS,G,H,jbas,quads)
  
   advals(1) = abs(H%E0)   
 
-  do iw = 2 ,20
+  do iw = 2 ,40
 
      coef = coef/(iw-1.d0) 
      ! current value of HS is renamed INT1 
@@ -229,19 +218,18 @@ subroutine BCH_EXPAND(HS,G,H,jbas,quads)
      call commutator_221(G,AD,INT2,w1,w2,jbas)
      call commutator_222_ph(GCC,ADCC,INT2,WCC,jbas)
      
-     ! Here is where you add perturbative quadrupoles if desired 
+     ! so now just add INT1 + c_n * INT2 to get current value of HS
      if (quads=='y') then 
         call add_sq_op(INT3, 1.d0 , INT2, 1.d0, INT2)          
         call restore_quadrupoles(AD,G,w1,w2,INT3,jbas) 
      end if 
 
-     ! so now just add INT1 + c_n * INT2 to get current value of HS
      call add_sq_op(INT1 ,1.d0 , INT2 , coef , HS )   !basic_IMSRG
           
      advals(iw) = mat_frob_norm(INT2)*coef
      if (advals(iw) < conv) exit
   end do 
-  if (iw > 20) STOP 'clipping BCH'
+  if (iw > 40) STOP 'clipping BCH'
   
 end subroutine BCH_EXPAND
 !=========================================================================
@@ -285,7 +273,7 @@ subroutine BCH_EXPAND_1b(HS,G,H,jbas,quads)
  
   advals(1) = abs(H%E0)   
 
-  do iw = 2 ,30
+  do iw = 2 ,60
      coef = coef/(iw-1.d0) 
      ! current value of HS is renamed INT1 
      ! INT2 is renamed AD, for the AD parameters in BCH and magnus expansions
@@ -314,6 +302,90 @@ subroutine BCH_EXPAND_1b(HS,G,H,jbas,quads)
 end subroutine BCH_EXPAND_1b
 !=========================================================================
 !=========================================================================
+subroutine BCH_EXPAND_2b(HS,G,H,jbas,quads) 
+  implicit none 
+  
+  real(8), parameter :: conv = 1e-6
+  integer :: trunc,i,m,n,q,j,k,l,a,b,c,d,iw
+  integer :: ix,jx,kx,lx,ax,cx,bx,dx,jmin,jmax,Jtot
+  integer :: mi,mj,mk,ml,ma,mc,mb,md,ja,jb,jj,ji,JT,MT
+  type(spd) :: jbas
+  type(sq_op) :: H , G, ETA, INT1, INT2, INT3,HS, AD,w1,w2
+  type(cc_mat) :: WCC,ADCC,GCC
+  real(8) :: adnorm,fullnorm,s,advals(20),sm,sm2,coef
+  character(3) :: args
+  character(1) :: quads ! enter some character to restore quadrupoles 
+
+
+  call duplicate_sq_op(HS,w1) !workspace
+  call duplicate_sq_op(HS,w2) !workspace
+  call duplicate_sq_op(HS,INT1) !workspace
+  call duplicate_sq_op(HS,INT2) !workspace
+  call duplicate_sq_op(HS,AD) !workspace
+  INT2%herm = 1
+  INT1%herm = 1 
+  AD%herm = 1
+  call init_ph_mat(AD,ADCC,jbas) !cross coupled ME
+  call duplicate_ph_mat(ADCC,GCC) !cross coupled ME
+  call init_ph_wkspc(ADCC,WCC) ! workspace for CCME
+
+  advals = 0.d0 
+  coef = 1.d0 
+
+  ! intermediates must be HERMITIAN
+  INT2%herm = 1
+  INT1%herm = 1 
+  AD%herm = 1
+  
+  !! so here:  H is the current hamiltonian and we 
+  !! copy it onto HS.  We copy this onto 
+  !! INT2, just to make things easier for everyone.
+  if (quads=='y') call duplicate_sq_op(H,INT3)
+
+  call copy_sq_op( H , HS )  !basic_IMSRG
+  call copy_sq_op( HS , INT2 )
+ 
+  advals(1) = abs(H%E0)   
+
+  do iw = 2 ,40
+
+     coef = coef/(iw-1.d0) 
+     ! current value of HS is renamed INT1 
+     ! INT2 is renamed AD, for the AD parameters in BCH and magnus expansions
+     ! AD refers AD_n and INT2 becomes AD_{n+1} . 
+     call copy_sq_op( HS , INT1) 
+     call copy_sq_op( INT2 , AD ) 
+     ! so to start, AD is equal to H
+     call clear_sq_op(INT2)
+     !now: INT2 = [ G , AD ]  
+        
+! zero body commutator 
+     call calculate_cross_coupled(AD,ADCC,jbas)
+     call calculate_cross_coupled(G,GCC,jbas) 
+  
+     INT2%E0 =  commutator_220(G,AD,jbas)
+              
+     call commutator_222_pp_hh(G,AD,INT2,w1,w2,jbas)
+
+     call commutator_221(G,AD,INT2,w1,w2,jbas)
+     call commutator_222_ph(GCC,ADCC,INT2,WCC,jbas)
+     
+     ! so now just add INT1 + c_n * INT2 to get current value of HS
+     if (quads=='y') then 
+        call add_sq_op(INT3, 1.d0 , INT2, 1.d0, INT2)          
+        call restore_quadrupoles(AD,G,w1,w2,INT3,jbas) 
+     end if 
+
+     call add_sq_op(INT1 ,1.d0 , INT2 , coef , HS )   !basic_IMSRG
+          
+     advals(iw) = mat_frob_norm(INT2)*coef
+     if (advals(iw) < conv) exit
+  end do 
+  if (iw > 40) STOP 'clipping BCH'
+  
+end subroutine BCH_EXPAND_2B
+!=========================================================================
+!=========================================================================
 subroutine BCH_TENSOR(G,HS,jbas,quads) 
   implicit none 
   
@@ -332,6 +404,7 @@ subroutine BCH_TENSOR(G,HS,jbas,quads)
   call duplicate_sq_op(HS,w1) !workspace
   call duplicate_sq_op(HS,w2) !workspace
   call duplicate_sq_op(HS,INT2) !workspace
+ ! call duplicate_sq_op(HS,INT3) !workspace
   call duplicate_sq_op(HS,AD) !workspace
   INT2%herm = 1
   AD%herm = 1
@@ -360,6 +433,9 @@ subroutine BCH_TENSOR(G,HS,jbas,quads)
      !now: INT2 = [ G , AD ]  
         
      call calculate_cross_coupled(G,GCC,jbas)      
+!!$OMP PARALLEL
+!!$OMP SECTIONS
+!!$OMP SECTION 
 
      call TS_commutator_111(G,AD,INT2,jbas) 
      call TS_commutator_121(G,AD,INT2,jbas)      
@@ -369,11 +445,14 @@ subroutine BCH_TENSOR(G,HS,jbas,quads)
      call TS_commutator_222_pp_hh(G,AD,INT2,w1,w2,jbas)
      call TS_commutator_221(w1,w2,G%herm*AD%herm,INT2,jbas)
 
+!!$OMP SECTION
+
      call TS_commutator_211(GCC,AD,INT2,jbas)
      call TS_commutator_222_ph(GCC,ADCC,AD,INT2,jbas)       
-
+!!$OMP END SECTIONS
+!!$OMP END PARALLEL 
+     
      ! so now just add HS + c_n * INT2 to get current value of HS
-  !   call append_operator( INT3 , 1.d0 , INT2 )   !basic_IMSRG
      call append_operator( INT2 , coef , HS )   !basic_IMSRG
      
          
@@ -390,7 +469,7 @@ subroutine BCH_ISOTENSOR(HS,G,jbas,quads)
   use isospin_operators
   implicit none 
   
-  real(8), parameter :: conv = 1e-4
+  real(8), parameter :: conv = 1e-6
   integer :: trunc,i,m,n,q,j,k,l,a,b,c,d,iw,omp_get_num_threads
   integer :: ix,jx,kx,lx,ax,cx,bx,dx,jmin,jmax,Jtot
   integer :: mi,mj,mk,ml,ma,mc,mb,md,ja,jb,jj,ji,JT,MT,threads
@@ -438,10 +517,10 @@ subroutine BCH_ISOTENSOR(HS,G,jbas,quads)
      call operator_commutator_222_pp_hh(G,AD,INT2,jbas)    
      call operator_commutator_222_ph(G,AD,INT2,jbas)       
      ! so now just add HS + c_n * INT2 to get current value of HS
-     !   call append_operator( INT3 , 1.d0 , INT2 )   !basic_IMSRG
     
      call append_isospin_operator( INT2 , coef , HS )   !basic_IMSRG
-              
+     
+         
      advals(iw) = iso_frob_norm(INT2)*coef
      if (advals(iw) < conv) exit
      
@@ -451,9 +530,6 @@ end subroutine BCH_ISOTENSOR
 !=========================================================================
 !=========================================================================
 subroutine CR_EXPAND(HS,G,H,jbas,quads) 
-  ! this is the BCH expansion less one term, where the number of
-  ! nested commutators is reducted by 1, This allows us to construct
-  ! the induced three-body force by taking one last commutator [exp_omega,HS]_{223} 
   implicit none 
   
   real(8), parameter :: conv = 1e-6
@@ -566,8 +642,7 @@ subroutine MAGNUS_EXPAND(DG,G,AD,jbas)
 
   advals = 0.d0 
   ! Intermediates are ANTI-HERMITIAN 
-
-  ! Bernoulli numbers
+  
   cof = (/1.d0,-0.5d0,.0833333333d0,0.d0,-0.00138888888d0,0.d0,3.306878d-5/) 
   ! nested derivatives not so important
      
@@ -677,7 +752,6 @@ end subroutine MAGNUS_EXPAND_1b
 !=====================================================
 !=====================================================
 subroutine euler_step(G,DG,s,stp)
-  ! forward euler step
   implicit none 
 
   integer :: i
@@ -690,15 +764,13 @@ subroutine euler_step(G,DG,s,stp)
 end subroutine 
 !=====================================================
 !=====================================================
-real(8) function restore_triples(H,OM,jbas) 
-  ! this is the MBPT(2) correction for a three-body force.
-  ! the actual correction comes in at fourth order, as the
-  ! induced three-body force is 2nd order in MBPT. 
+subroutine restore_triples(H,OM,jbas,sm,smop,Op) 
   implicit none 
   
   type(spd) :: jbas
   type(tpd),allocatable,dimension(:) :: threebas
   type(sq_op) :: H,OM
+  type(sq_op),optional :: Op
   integer :: a,b,c,i,j,k,Jtot,Jab,Jij,g1
   integer :: ja,jb,jc,ji,jj,jk,AAA,q
   integer :: ax,bx,cx,ix,jx,kx,III
@@ -707,15 +779,15 @@ real(8) function restore_triples(H,OM,jbas)
   real(8) :: faa,fbb,fcc,fii,fjj,fkk,Gabab,Gkbkb,Gkckc
   real(8) :: Gacac,Gbcbc,Gijij,Gikik,Gjkjk,Giaia
   real(8) :: Gibib,Gicic,Gjaja,Gjbjb,Gjcjc,Gkaka    
-  real(8) :: sm,denom,dlow,w,pre1,pre2
+  real(8) :: sm,denom,dlow,w,pre1,pre2,wop,smop
   
-  
-  sm = 0.d0   
+  sm = 0.d0
+  smop = 0.d0 
   call enumerate_three_body(threebas,jbas)  
   total_threads = size(threebas(1)%direct_omp) - 1
 
-  !$OMP PARALLEL DO DEFAULT(FIRSTPRIVATE) SHARED(threebas,jbas,H,OM) & 
-  !$OMP& REDUCTION(+:sm)  
+!$OMP PARALLEL DO DEFAULT(FIRSTPRIVATE) SHARED(threebas,jbas,H,OM) & 
+!$OMP& REDUCTION(+:sm)  REDUCTION(+:smop)
   
   do thread = 1, total_threads
   do q = 1+threebas(1)%direct_omp(thread),&
@@ -763,8 +835,6 @@ real(8) function restore_triples(H,OM,jbas)
            j = threebas(q)%hhh(III,2)
            k = threebas(q)%hhh(III,3)
 
-           ! prefactors to to account for
-           ! double counting. 
            if (i==j) then 
               if (i==k) then 
                  pre2 = 6.d0
@@ -805,7 +875,7 @@ real(8) function restore_triples(H,OM,jbas)
            Gkbkb = twobody_monopole(k,b,jk,jb,H,jbas) 
            Gkckc = twobody_monopole(k,c,jk,jc,H,jbas) 
   
-           ! THIS IS THE EPSTEIN NESBET DENOMINATOR     
+                
            denom = -1*(faa+fbb+fcc-fii-fjj-fkk+Gabab+&
                 Gacac+Gbcbc+Gijij+Gikik+Gjkjk-Giaia&
                 -Gibib-Gicic-Gjaja-Gjbjb-Gjcjc-Gkaka-&
@@ -819,8 +889,16 @@ real(8) function restore_triples(H,OM,jbas)
                  
                  if ( .not. (triangle(Jtot,jk,Jij))) cycle
                  if ((i==j) .and. (mod(Jij/2,2)==1)) cycle
+                 
                  w = commutator_223_single(OM,H,a,b,c,i,j,k,Jtot,jab,jij,jbas)
+
                  sm = sm + w*w/denom*(Jtot+1.d0)
+
+                 if (present(Op)) then
+                    wop = 2.d0 * commutator_223_single(OM,Op,a,b,c,i,j,k,Jtot,jab,jij,jbas)
+                    smop=smop+ wop*w/denom*(Jtot+1.d0)
+                 end if
+                 
               end do
            end do
 
@@ -829,18 +907,13 @@ real(8) function restore_triples(H,OM,jbas)
   end do
   end do 
  !$OMP END PARALLEL DO 
-  restore_triples = sm
-
-end function restore_triples
+end subroutine restore_triples
 !================================================
 !================================================
 end module
 !================================================
 !================================================
 subroutine restore_quadrupoles( X , OM, w1,w2, RES,jbas ) 
-  ! perturbative quadrupoles restoration, these are best included
-  ! on the fly in the BCH expansion, and this routine costs NOTHING
-  ! compared with the triples. In fact the scaling is the same as the IM-SRG calculation. 
   use basic_IMSRG
   implicit none
   
@@ -1002,13 +1075,13 @@ subroutine restore_quadrupoles( X , OM, w1,w2, RES,jbas )
     end do 
  end do 
 
-end subroutine restore_quadrupoles
+end subroutine 
 !========================================================================
 !========================================================================
 subroutine build_intermediates_For_intermediates(L,R,w1,w2,jbas) 
   !VERIFIED
   !NEEDS TO BE RUN BEFORE 221, because it sets up the 
-  !intermediate matrices for the calculation of 
+  !intermediary matrices for the calculation of 
   ! one body insertions in restore_quadrupoles
   use basic_IMSRG
   implicit none

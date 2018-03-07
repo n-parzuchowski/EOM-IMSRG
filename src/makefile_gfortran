@@ -11,7 +11,7 @@ PFLAGS = -O3 -pg
 
 CXXFLAGS = -std=c++11 -O3
 
-LIBS =  -L/user/local/lib/ -llapack -lblas -larpack -lz
+LIBS =  -llapack -lblas -larpack -lz
 
 obfiles = bin
 modfiles = md
@@ -31,10 +31,10 @@ $(obfiles):
 	@mkdir -p $(modfiles)
 
 $(obfiles)/%.o: %.f
-	${FC} -c -o $@ $< -J$(modfiles)
+	${FC} -c -o $@ $< -J$(modfiles) ${LIBS}
 
 $(obfiles)/%.o: %.f90
-	${FC} -c -o $@ $< -J$(modfiles)
+	${FC} -c -o $@ $< -J$(modfiles) ${LIBS}
 
 # nice gift from FEI to detect dependencies automatically
 dependencies.mk: $(F90SRC)
@@ -48,6 +48,8 @@ dependencies.mk: $(F90SRC)
  
 -include dependencies.mk
 
+truncate: truncate_interaction.cpp
+	${CC} truncate_interaction.cpp -o ${p3}
 clean:
 	rm -f ${p1} $
 	rm -f ${p2} $

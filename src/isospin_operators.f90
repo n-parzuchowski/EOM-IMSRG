@@ -1,6 +1,5 @@
  module isospin_operators
-! here I store the structures for isospin projection changing operators 
-   use basic_IMSRG
+  use basic_IMSRG
   
   TYPE :: iso_block
      integer :: lam(4) ! specifices J,Par,Tz1,Tz2 of the block
@@ -41,8 +40,7 @@
 contains
 !===============================================================
 !===============================================================  
-real(8) function iso_frob_norm(op)
-    ! frobenius norm
+real(8) function iso_frob_norm(op) 
   implicit none 
   
   type(iso_operator) :: op
@@ -62,7 +60,7 @@ end function
 !=====================================================
 !=====================================================
 subroutine append_isospin_operator(BB,bx,AA) 
-  ! AA = AA+ BB*bx 
+  ! make a copy of H onto op
   implicit none 
   
   type(iso_operator) :: AA,BB
@@ -107,7 +105,7 @@ end subroutine copy_isospin_operator
 !=====================================================
 !=====================================================
 subroutine clear_isospin_operator(op) 
- ! set op to zero 
+  ! make a copy of H onto op
   implicit none 
   
   type(iso_operator) :: op
@@ -129,6 +127,7 @@ end subroutine clear_isospin_operator
 !=========================================================
 subroutine duplicate_isospin_operator(A,B)
   ! I'm just making an empty copy of the operator, which carries all of it's parameters
+  
   implicit none
 
   type(iso_operator) :: A,B
@@ -307,6 +306,7 @@ subroutine allocate_isospin_ladder(jbas,op,zerorank)
 
               ! we already figured this stuff out for 
               ! the rank 0 case, so lets re-use it
+
               
               if ( (abs(Tz2) > 1) .or. (Jtot2 > Jbas%Jtotal_max*2) ) then 
                  npp1=0
@@ -326,11 +326,11 @@ subroutine allocate_isospin_ladder(jbas,op,zerorank)
               
               if ( (abs(Tz2) .le. 1) .and. (Jtot2 .le. Jbas%Jtotal_max*2) ) then 
                  
-                 ! yeah this is a mess but it really facilitates the 
-                 ! commutators
+              ! yeah this is a mess but it really facilitates the 
+              ! commutators
 
-                 ! blocks such as pphh ALWAYS have pp first then hh
-                 ! looks scary but i'm just copying everything from the
+              ! blocks such as pphh ALWAYS have pp first then hh
+              ! looks scary but i'm just copying everything from the
                  ! rank zero operators we already have
                  op%tblck(q)%qn(1)%Y = zerorank%mat(q1)%qn(1)%Y
                  op%tblck(q)%qn(2)%Y = zerorank%mat(q2)%qn(3)%Y
@@ -398,20 +398,19 @@ subroutine allocate_isospin_ladder(jbas,op,zerorank)
          end do
       end do
       
-      ! these are six j symbols that I don't already have,
-      ! which the commutators need for this tensor.
-      ! access with XXXsixj
-      
+   ! these are six j symbols that I don't already have,
+   ! which the commutators need for this tensor.
+   ! access with XXXsixj
+
       if (.not. allocated(half6j(op%xindx)%tp_mat)) then          
          call store_6j_3halfint(jbas,rank,op%xindx)
       end if
+   !call divide_work_tensor(op) 
 
 end subroutine allocate_isospin_ladder
 !=========================================================
 !=========================================================
 subroutine allocate_isospin_operator(jbas,op,zerorank)
-  ! this is the most general storage structure, taking up the most
-  ! memory
   implicit none
   
   type(spd) :: jbas
@@ -794,7 +793,7 @@ real(8) function iso_op_elem(a,b,c,d,J1,J2,op,jbas)
   P = mod(la + lb,2) 
      
   if ( mod(lc + ld,2) .ne. abs(P - ((-1)**(op%dpar/2+1)+1)/2) ) then
-     iso_op_elem = 0.d0 
+    iso_op_elem = 0.d0 
     return
   end if 
         
@@ -806,10 +805,10 @@ real(8) function iso_op_elem(a,b,c,d,J1,J2,op,jbas)
   T = (ta + tb)/2
      
   if ((tc+td) .ne. 2*(T-op%dTz)) then     
-     iso_op_elem = 0.d0
-     return
-  end if
-  
+    iso_op_elem = 0.d0
+    return
+  end if 
+
   q = iso_ladder_block_index(J1,J2,rank,T,P) 
   
   ! see subroutine "allocate_blocks" for mapping from qx to each 
@@ -1063,8 +1062,7 @@ end function iso_ladder_block_index
 !=================================================================     
 !=================================================================
 real(8) function count_dTz_configs(J1,Tz,PAR,jbas,ph,qn)
-  ! count configs for pandya intermediates
-  implicit none
+   implicit none
    
    type(spd) :: jbas
    integer :: J1,Tz,PAR,i,j,ji,jj,NX,r1,A,ix,jx 
@@ -1140,7 +1138,7 @@ real(8) function count_dTz_configs(J1,Tz,PAR,jbas,ph,qn)
 !=======================================================================
 !=======================================================================
  subroutine fill_generalized_oppandya_matrix(J1,J2,MAT,qn1,qn2,OP,jbas,hp)
-   ! CALCULATES THE GENERALIZED PANDYA MATRIX ELEMENTS OF
+   ! CALCULATES THE CROSS GENERALIZED PANDYA MATRIX ELEMENTS OF
    ! OP FOR A GIVEN CHANNEL
    implicit none
 

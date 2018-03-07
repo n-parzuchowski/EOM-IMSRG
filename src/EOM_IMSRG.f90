@@ -11,7 +11,6 @@ contains
 
 
 subroutine calculate_excited_states(J,PAR,Numstates,HS,jbas,ladder_ops) 
-  ! this is the control routine for the EOM-IMSRG calculation
   implicit none
   
   real(8) :: BE,Mfi ,SD_shell_content,dEtrips,dcgi,dcgi00
@@ -52,26 +51,24 @@ subroutine calculate_excited_states(J,PAR,Numstates,HS,jbas,ladder_ops)
   end do
   
   print* 
-  write(*,'((A55),(I1),(A3),(I1))') 'EXECUTING EOM CALCULATION'// &
-       ' FOR EXCITED STATES: J=',J/2,' P=',PAR  
+  write(*,'((A55),(I1),(A3),(I1),(A))') 'EXECUTING EOM CALCULATION'// &
+       ' FOR EXCITED STATES: J=',J/2,' P=',PAR," for "//&
+       nucleus_name(HS%Aneut,HS%Aprot)     
   print*
 
-  ! heavy lifting done here 
   call lanczos_diagonalize(jbas,HS,ladder_ops,Numstates)
-
+  !    call write_ladder_operators(ladder_ops,jbas)
+ ! end if
   print*
   write(*,'((A21),(f16.9))') 'Ground State Energy: ',HS%E0 
   print*
   print*, 'EXCITED STATE ENERGIES:'
-  print*, '==========================================='
-  print*, '      dE         E_0 + dE         n(1p1h)  ' 
-  print*, '==========================================='
-
-  do i = 1, Numstates
-     
-     Es(i) = ladder_ops(i)%E0          
-     write(*,'(6(f16.9))') ladder_ops(i)%E0 , ladder_ops(i)%E0+HS%E0, sum(ladder_ops(i)%fph**2)
-       
+  print*, '=============================================='
+  print*, '      dE           E_0 + dE         n(1p1h)   ' 
+  print*, '=============================================='
+  do i = 1, Numstates!          x       x       xxxxxxx   
+     Es(i) = ladder_ops(i)%E0     
+     write(*,'(3(f16.9))')ladder_ops(i)%E0,ladder_ops(i)%E0+HS%E0+dEtrips,sum(ladder_ops(i)%fph**2)       
   end do
   
   ! WRITE STUFF TO FILES. 
@@ -99,7 +96,6 @@ end subroutine calculate_excited_states
 !==================================================================================
 !==================================================================================
 subroutine calculate_isospin_states(J,PAR,dTZ,Numstates,HS,jbas,ladder_ops) 
-  !control routine for isospin projection changing EOM
   implicit none
   
   real(8) :: BE,Mfi ,SD_shell_content,dEtrips,dcgi,dcgi00
@@ -136,8 +132,10 @@ subroutine calculate_isospin_states(J,PAR,dTZ,Numstates,HS,jbas,ladder_ops)
   end do
   
   print* 
-  write(*,'((A55),(I1),(A3),(I1),(A5),(I2))') 'EXECUTING EOM CALCULATION'// &
-       ' FOR EXCITED STATES: J=',J/2,' P=',PAR,' dTZ=',dTZ   
+  write(*,'((A55),(I1),(A3),(I1),(A))') 'EXECUTING EOM CALCULATION'// &
+       ' FOR EXCITED STATES: J=',J/2,' P=',PAR," for "//&
+       nucleus_name(HS%Aneut+dTz,HS%Aprot-dTz)
+  
   print*
 
   t1 = omp_get_wtime() 
@@ -149,16 +147,17 @@ subroutine calculate_isospin_states(J,PAR,dTZ,Numstates,HS,jbas,ladder_ops)
   print*
   write(*,'((A21),(f16.9))') 'Ground State Energy: ',HS%E0 
   print*
-  print*, 'EXCITED STATE ENERGIES:'
-  print*, '================================================='
-  print*, '      dE              E_0 + dE         n(1p1h)  '
-  print*, '================================================='
-  do i = 1, Numstates
+  print*, 'ENERGIES WITH RESPECT TO THE '//nucleus_name(HS%Aneut,HS%Aprot)//&
+  'GROUND STATE:'
+  print*, '========================================================='
+  print*, '      dE              dE_0 + dE         n(1p1h)  '
+  print*, '========================================================='
+  do i = 1, Numstates!          x       x       xxxxxxx   
      Es(i) = ladder_ops(i)%E0     
      write(*,'(3(f16.9))') ladder_ops(i)%E0 , ladder_ops(i)%E0+HS%E0,sum(ladder_ops(i)%fph**2)
        
   end do
-
+  
 end subroutine calculate_isospin_states
 !==============================================================================================
 !==============================================================================================
@@ -195,7 +194,7 @@ subroutine LANCZOS_DIAGONALIZE(jbas,OP,Vecs,nev)
   call init_ph_mat(Op,OpPP,jbas) !cross coupled ME
   call init_ph_mat(vecs(1),QPP,jbas) !cross coupled ME
   call init_ph_wkspc(QPP,WPP) 
-    
+  
   h = OP%belowEF !holes
   p = OP%Nsp-h  !particles
  
@@ -216,50 +215,51 @@ subroutine LANCZOS_DIAGONALIZE(jbas,OP,Vecs,nev)
      end do
   end do
   
-  tps = 0 
-  do q = 1, vecs(1)%nblocks
+     tps = 0 
+     do q = 1, vecs(1)%nblocks
+     
+        do II = 1,size( vecs(1)%tblck(q)%tgam(3)%X(:,1) ) 
+           do JJ = 1, size( vecs(1)%tblck(q)%tgam(3)%X(1,:) )  
+           
+              if (mod(vecs(1)%tblck(q)%Jpair(1)/2,2) == 1) then 
+                 
+                 if ( vecs(1)%tblck(q)%tensor_qn(1,1)%Y(II,1) == &
+                      vecs(1)%tblck(q)%tensor_qn(1,1)%Y(II,2) ) cycle
+              end if 
 
-     do II = 1,size( vecs(1)%tblck(q)%tgam(3)%X(:,1) ) 
-        do JJ = 1, size( vecs(1)%tblck(q)%tgam(3)%X(1,:) )  
-
-           if (mod(vecs(1)%tblck(q)%Jpair(1)/2,2) == 1) then 
-
-              if ( vecs(1)%tblck(q)%tensor_qn(1,1)%Y(II,1) == &
-                   vecs(1)%tblck(q)%tensor_qn(1,1)%Y(II,2) ) cycle
-           end if
-
-           if (mod(vecs(1)%tblck(q)%Jpair(2)/2,2) == 1) then 
-
-              if ( vecs(1)%tblck(q)%tensor_qn(3,2)%Y(JJ,1) == &
-                   vecs(1)%tblck(q)%tensor_qn(3,2)%Y(JJ,2) ) cycle
-           end if
-
-           tps = tps+ 1
+              if (mod(vecs(1)%tblck(q)%Jpair(2)/2,2) == 1) then 
+   
+                 if ( vecs(1)%tblck(q)%tensor_qn(3,2)%Y(JJ,1) == &
+                      vecs(1)%tblck(q)%tensor_qn(3,2)%Y(JJ,2) ) cycle
+              end if
+           
+              tps = tps+ 1
+           end do
         end do
+        
+        if (vecs(1)%tblck(q)%Jpair(1) == vecs(1)%tblck(q)%Jpair(2)) cycle
+ 
+        do II = 1,size( vecs(1)%tblck(q)%tgam(7)%X(:,1) ) 
+           do JJ = 1, size( vecs(1)%tblck(q)%tgam(7)%X(1,:) )  
+           
+              if (mod(vecs(1)%tblck(q)%Jpair(1)/2,2) == 1) then 
+                 
+                 if ( vecs(1)%tblck(q)%tensor_qn(3,1)%Y(II,1) == &
+                      vecs(1)%tblck(q)%tensor_qn(3,1)%Y(II,2) ) cycle
+              end if 
+
+              if (mod(vecs(1)%tblck(q)%Jpair(2)/2,2) == 1) then 
+   
+                 if ( vecs(1)%tblck(q)%tensor_qn(1,2)%Y(JJ,1) == &
+                      vecs(1)%tblck(q)%tensor_qn(1,2)%Y(JJ,2) ) cycle
+              end if
+           
+              tps = tps+ 1
+           end do
+        end do
+
      end do
 
-     if (vecs(1)%tblck(q)%Jpair(1) == vecs(1)%tblck(q)%Jpair(2)) cycle
-
-     do II = 1,size( vecs(1)%tblck(q)%tgam(7)%X(:,1) ) 
-        do JJ = 1, size( vecs(1)%tblck(q)%tgam(7)%X(1,:) )  
-
-           if (mod(vecs(1)%tblck(q)%Jpair(1)/2,2) == 1) then 
-
-              if ( vecs(1)%tblck(q)%tensor_qn(3,1)%Y(II,1) == &
-                   vecs(1)%tblck(q)%tensor_qn(3,1)%Y(II,2) ) cycle
-           end if
-
-           if (mod(vecs(1)%tblck(q)%Jpair(2)/2,2) == 1) then 
-
-              if ( vecs(1)%tblck(q)%tensor_qn(1,2)%Y(JJ,1) == &
-                   vecs(1)%tblck(q)%tensor_qn(1,2)%Y(JJ,2) ) cycle
-           end if
-
-           tps = tps+ 1
-        end do
-     end do
-
-  end do
            
   print*, '1p1h Amplitudes: ', sps
   print*, '2p2h Amplitudes: ', tps
@@ -270,7 +270,7 @@ subroutine LANCZOS_DIAGONALIZE(jbas,OP,Vecs,nev)
   ido = 0  ! status integer is 0 at start
   BMAT = 'I' ! standard eigenvalue problem (N for generalized) 
   which = 'SM' ! compute smallest eigenvalues in magnitude ('SA') is algebraic. 
-  tol = 0.0E+00 ! error tolerance, machine precision. 
+  tol = 1.0E-10 ! error tolerance? (wtf zero?) 
   info = 0
   ncv = 5*nev ! number of lanczos vectors I guess
   lworkl = ncv*(ncv+8) 
@@ -293,8 +293,7 @@ subroutine LANCZOS_DIAGONALIZE(jbas,OP,Vecs,nev)
      ! stuff declared right, the code should know this. 
      call dsaupd ( ido, bmat, N, which, nev, tol, resid, &
           ncv, v, ldv, iparam, ipntr, workd, workl, &
-          lworkl, info ) ! ARPACK IMPLICITLY RESTARTED LANCZOS ROUTINE
-     
+          lworkl, info )
      ! The actual matrix only gets multiplied with the "guess" vector in "matvec_prod" 
      call progress_bar( i )
 
@@ -304,7 +303,9 @@ subroutine LANCZOS_DIAGONALIZE(jbas,OP,Vecs,nev)
         exit
      end if
      
-     call matvec_nonzeroX_prod(N,OP,Q1,Q2,w1,w2,OpPP,QPP,WPP,jbas, workd(ipntr(1)), workd(ipntr(2)) ) 
+
+      call matvec_nonzeroX_prod(N,OP,Q1,Q2,w1,w2,OpPP,QPP,WPP,jbas, workd(ipntr(1)), workd(ipntr(2)) ) 
+
      
   end do
   write(6,*) 
@@ -319,11 +320,10 @@ subroutine LANCZOS_DIAGONALIZE(jbas,OP,Vecs,nev)
   ldz = N  
   call dseupd( rvec, howmny, selct, d, Z, ldv, sigma, &
       bmat, n, which, nev, tol, resid, ncv, v, ldv, &
-      iparam, ipntr, workd, workl, lworkl, info ) ! ARPACK POST PROCESSING FOR DSAUPD 
+      iparam, ipntr, workd, workl, lworkl, info )
   
   ! right now Z contains the eigenvectors in the columns
   ! d contains the eigenvalues in the same order. 
-
   do i = 1, nev
      call unwrap_tensor(Z(:,i),Vecs(i),N,jbas) 
      Vecs(i)%E0 = d(i)
@@ -366,7 +366,7 @@ subroutine LANCZOS_ISOSPIN_CHANGER(jbas,OP,Vecs,nev)
         
         i = jbas%parts(ix)
         j = jbas%holes(jx) 
-  
+
         if (triangle(jbas%jj(i),jbas%jj(j),vecs(1)%rank)) then  
 
            if (jbas%itzp(i)-vecs(1)%dTz*2 .ne. jbas%itzp(j) ) cycle
@@ -396,7 +396,7 @@ subroutine LANCZOS_ISOSPIN_CHANGER(jbas,OP,Vecs,nev)
               if ( vecs(1)%tblck(q)%qn(2)%Y(JJ,1) == &
                    vecs(1)%tblck(q)%qn(2)%Y(JJ,2) ) cycle
            end if
-
+           
            tps = tps+ 1
         end do
      end do
@@ -412,9 +412,9 @@ subroutine LANCZOS_ISOSPIN_CHANGER(jbas,OP,Vecs,nev)
   ido = 0  ! status integer is 0 at start
   BMAT = 'I' ! standard eigenvalue problem (N for generalized) 
   which = 'SM' ! compute smallest eigenvalues in magnitude ('SA') is algebraic. 
-  tol = 0.0E+00 ! error tolerance 
+  tol = 1.0E-10 ! error tolerance? (wtf zero?) 
   info = 0
-  ncv = 5*nev ! number of lanczos vectors
+  ncv = 5*nev ! number of lanczos vectors I guess
   lworkl = ncv*(ncv+8) 
   allocate(V(N,NCV),workl(lworkl))
   LDV = N  
@@ -469,8 +469,49 @@ subroutine LANCZOS_ISOSPIN_CHANGER(jbas,OP,Vecs,nev)
   end do 
       
 end subroutine LANCZOS_ISOSPIN_CHANGER
-!=========================================================================
-!=========================================================================
+
+
+subroutine matvec_prod(N,OP,Q_op,Qout,w1,w2,OpCC,QCC,WCC,jbas,v,w) 
+  implicit none 
+  
+  integer :: N ,q,a,b,c,d,i,j,k,l,Jtot
+  real(8) :: sm
+  type(sq_op) :: OP, Q_op ,Qout,w1,w2
+ ! type(ph_mat) :: QCC,WCC
+  type(cc_mat) :: OpCC,QCC,WCC
+  type(spd) :: jbas
+  real(8),dimension(N) :: v,w 
+  real(8) :: coef9,dfact0
+
+  ! the name says mat-vec product, but really this
+  ! is a commutator. 
+  
+  ! the commutator here is equivalent to the matrix-vector product 
+  ! with only connected diagrams retained. 
+
+  
+  ! FIRST WE NEED TO CONVERT v TO a (SQ_OP) variable
+  
+  call unwrap(v,Q_op,N,jbas)
+
+  ! now we have two sq_op operators which can be used with my commutator expressions. Noice. 
+    
+  call calculate_cross_coupled(Op,OpCC,jbas)
+  call EOM_scalar_cross_coupled(Q_op,QCC,jbas) 
+ 
+  call EOM_scalar_commutator_111(Op,Q_op,Qout,jbas) ! verified   
+  call EOM_scalar_commutator_121(Op,Q_op,Qout,jbas) ! verified
+  call EOM_scalar_commutator_122(Op,Q_op,Qout,jbas)  ! verified, damnit.  
+
+  call EOM_scalar_commutator_222_pp_hh(Op,Q_op,Qout,w1,w2,jbas) ! verified   
+  call EOM_scalar_commutator_221(Op,Q_op,Qout,w1,w2,jbas)  ! verified.    
+  call EOM_scalar_commutator_222_ph(OpCC,QCC,Qout,WCC,jbas) 
+ 
+  ! Okay, now we have the "matrix vector product" So lets put it back in vector form:
+  call rewrap(w,Qout,N,jbas) 
+end subroutine
+!======================================================================================
+!======================================================================================
 subroutine matvec_nonzeroX_prod(N,OP,Q_op,Qout,w1,w2,OpCC,QCC,WCC,jbas,v,w) 
   implicit none 
   
@@ -552,6 +593,114 @@ subroutine matvec_ISOX_prod(N,OP,Q_op,Qout,jbas,v,w)
 end subroutine
 !======================================================================================
 !======================================================================================
+subroutine unwrap( v, AX ,N ,jbas) 
+  implicit none 
+  
+  type(spd) :: jbas
+  integer :: N ,i, II,JJ, parts,holes,q,IX,JX
+  real(8),dimension(N) :: v
+  type(sq_op) :: AX 
+  
+  i = 1
+  
+  holes = AX%belowEF
+  parts = AX%Nsp- holes 
+  
+  ! one body
+  do IX = 1,parts
+     do JX = 1,holes
+        
+        II = jbas%parts(ix)
+        JJ = jbas%holes(jx) 
+        
+        ! i have to do this because i don't have the 
+        ! one body piece blocked by conserved quantities
+        if (jbas%jj(II) .ne. jbas%jj(JJ) ) cycle
+        if (jbas%itzp(II) .ne. jbas%itzp(JJ) ) cycle
+        if (jbas%ll(II) .ne. jbas%ll(JJ) ) cycle
+        
+        AX%fph(IX,JX) = v(i) / SQRT( jbas%jj( II ) + 1.d0 ) 
+        i = i + 1
+     end do
+  end do
+
+  
+  ! two body 
+
+  do q = 1, AX%nblocks
+     
+     do II = 1,AX%mat(q)%npp
+        do JJ = 1, AX%mat(q)%nhh 
+           
+           if (mod(AX%mat(q)%lam(1)/2,2) == 1) then 
+              if ( AX%mat(q)%qn(1)%Y(II,1) == &
+                   AX%mat(q)%qn(1)%Y(II,2) ) cycle
+             if ( AX%mat(q)%qn(3)%Y(JJ,1) == &
+                   AX%mat(q)%qn(3)%Y(JJ,2) ) cycle
+           end if
+           AX%mat(q)%gam(3)%X(II,JJ) = v(i) / SQRT(AX%mat(q)%LAM(1)+1.d0) 
+           i = i + 1
+        end do 
+     end do 
+  end do 
+
+end subroutine 
+!============================================================================  
+!============================================================================
+subroutine rewrap( v, AX ,N ,jbas) 
+  implicit none 
+  
+  type(spd) :: jbas
+  integer :: N ,i, II,JJ, parts,holes,q,IX,JX
+  real(8),dimension(N) :: v
+  type(sq_op) :: AX 
+  
+  i = 1
+  
+  holes = AX%belowEF
+  parts = AX%Nsp- holes 
+  
+  ! one body
+  do IX = 1,parts
+     do JX = 1,holes
+        
+        II = jbas%parts(ix)
+        JJ = jbas%holes(jx) 
+        
+        ! i have to do this because i don't have the 
+        ! one body piece blocked by conserved quantities
+        if (jbas%jj(II) .ne. jbas%jj(JJ) ) cycle
+        if (jbas%itzp(II) .ne. jbas%itzp(JJ) ) cycle
+        if (jbas%ll(II) .ne. jbas%ll(JJ) ) cycle
+        
+        v(i) = AX%fph(IX,JX)*sqrt(jbas%jj(ii) + 1.d0)  
+        i = i + 1
+     end do
+  end do
+  
+  ! two body 
+
+  do q = 1, AX%nblocks
+     
+     do II = 1,AX%mat(q)%npp
+        do JJ = 1, AX%mat(q)%nhh 
+           
+           if (mod(AX%mat(q)%lam(1)/2,2) == 1) then 
+              if ( AX%mat(q)%qn(1)%Y(II,1) == &
+                   AX%mat(q)%qn(1)%Y(II,2) ) cycle
+             if ( AX%mat(q)%qn(3)%Y(JJ,1) == &
+                   AX%mat(q)%qn(3)%Y(JJ,2) ) cycle
+           end if
+           v(i) = AX%mat(q)%gam(3)%X(II,JJ)*SQRT(AX%mat(q)%LAM(1)+1.d0) 
+           i = i + 1
+        end do 
+     end do 
+  end do 
+           
+
+end subroutine 
+
+
 subroutine progress_bar( step  )  
   implicit none
   
@@ -578,8 +727,11 @@ real(8) function EOM_triples(H,Xdag,jbas)
   type(spd) :: jbas
   type(sq_op) :: H,Xdag
   
-  EOM_triples = tensor_Triples(H,Xdag,jbas)
-
+!  if (Xdag%rank == 0 ) then 
+ !    EOM_triples = scalar_Triples(H,Xdag,jbas)
+ ! else
+     EOM_triples = tensor_Triples(H,Xdag,jbas)
+  !end if
 end function EOM_triples
 !=====================================================
 !=====================================================
@@ -736,6 +888,152 @@ real(8) function tensor_triples(H,Xdag,jbas)
   tensor_triples = sm
   
 end function tensor_triples
+!=====================================================
+!=====================================================
+real(8) function scalar_triples(H,Xdag,jbas) 
+  implicit none 
+  
+  type(spd) :: jbas
+  type(tpd),allocatable,dimension(:) :: threebas
+  type(sq_op) :: H,Xdag,Xrag
+  integer :: a,b,c,i,j,k,jtot1,jtot2,Jab,Jij,g1
+  integer :: ja,jb,jc,ji,jj,jk,AAA,q,q2,TZ,PAR
+  integer :: ax,bx,cx,ix,jx,kx,III,rank,fails
+  integer :: jab_min,jab_max,jij_min,jij_max
+  integer :: J_min, J_max,x,total_threads,thread
+  real(8) :: faa,fbb,fcc,fii,fjj,fkk,Gabab,Gkbkb,Gkckc
+  real(8) :: Gacac,Gbcbc,Gijij,Gikik,Gjkjk,Giaia
+  real(8) :: Gibib,Gicic,Gjaja,Gjbjb,Gjcjc,Gkaka  
+  real(8) :: sm,denom,dlow,w,w_test,pre1,pre2
+  
+  sm = 0.d0   
+  call enumerate_three_body(threebas,jbas)  
+  total_threads = size(threebas(1)%direct_omp) - 1
+  rank = Xdag%rank
+  fails = 0
+!$OMP PARALLEL DO DEFAULT(FIRSTPRIVATE) SHARED(threebas,jbas,H,Xdag) & 
+!$OMP& REDUCTION(+:sm)  
+  
+  do thread = 1, total_threads
+  do q = 1+threebas(1)%direct_omp(thread),&
+       threebas(1)%direct_omp(thread+1)
+  !do q = 1, size(threebas)
+
+     jtot1 = threebas(q)%chan(1)      
+     TZ = threebas(q)%chan(2)      
+     PAR = threebas(q)%chan(3)      
+
+     do AAA = 1, size(threebas(q)%ppp(:,1)) 
+        pre1 = 1.d0
+        a = threebas(q)%ppp(AAA,1)
+        b = threebas(q)%ppp(AAA,2)
+        c = threebas(q)%ppp(AAA,3)
+
+        if (a==b) then 
+           if (a==c) then 
+              pre1 = 6.d0
+           else
+              pre1 = 2.d0
+           end if
+        else if (a==c) then 
+           pre1 = 2.d0
+        else if (b==c) then 
+           pre1 = 2.d0 
+        else
+           pre1 = 1.d0 
+        end if
+
+        ja = jbas%jj(a)      
+        jb = jbas%jj(b) 
+        jc = jbas%jj(c) 
+
+        jab_min = abs(ja-jb) 
+        jab_max = ja+jb
+
+        faa = f_elem(a,a,H,jbas)
+        fbb = f_elem(b,b,H,jbas)
+        fcc = f_elem(c,c,H,jbas)
+        Gabab = twobody_monopole(a,b,ja,jb,H,jbas) 
+        Gacac = twobody_monopole(a,c,ja,jc,H,jbas) 
+        Gbcbc = twobody_monopole(b,c,jb,jc,H,jbas) 
+                
+        do III = 1, size(threebas(q)%hhh(:,1)) 
+              
+           pre2 = 1.d0 
+           i = threebas(q)%hhh(III,1)
+           j = threebas(q)%hhh(III,2)
+           k = threebas(q)%hhh(III,3)
+           
+           if (i==j) then 
+              if (i==k) then 
+                 pre2 = 6.d0
+              else
+                 pre2 = 2.d0
+              end if
+           else if (i==k) then 
+              pre2 = 2.d0
+           else if (j==k) then 
+              pre2 = 2.d0 
+           else
+              pre2 = 1.d0 
+           end if 
+
+           ji = jbas%jj(i)       
+           jj = jbas%jj(j) 
+           jk = jbas%jj(k)  
+
+           jij_min = abs(ji-jj) 
+           jij_max = ji+jj
+
+           fii = f_elem(i,i,H,jbas)
+           fjj = f_elem(j,j,H,jbas)
+           fkk = f_elem(k,k,H,jbas)
+
+           Gijij = twobody_monopole(i,j,ji,jj,H,jbas) 
+           Gikik = twobody_monopole(i,k,ji,jk,H,jbas) 
+           Gjkjk = twobody_monopole(j,k,jj,jk,H,jbas) 
+
+           Giaia = twobody_monopole(i,a,ji,ja,H,jbas) 
+           Gibib = twobody_monopole(i,b,ji,jb,H,jbas) 
+           Gicic = twobody_monopole(i,c,ji,jc,H,jbas) 
+
+           Gjaja = twobody_monopole(j,a,jj,ja,H,jbas) 
+           Gjbjb = twobody_monopole(j,b,jj,jb,H,jbas) 
+           Gjcjc = twobody_monopole(j,c,jj,jc,H,jbas) 
+
+           Gkaka = twobody_monopole(k,a,jk,ja,H,jbas) 
+           Gkbkb = twobody_monopole(k,b,jk,jb,H,jbas) 
+           Gkckc = twobody_monopole(k,c,jk,jc,H,jbas) 
+
+           denom = (Xdag%E0-(faa+fbb+fcc-fii-fjj-fkk+Gabab+&
+                Gacac+Gbcbc+Gijij+Gikik+Gjkjk-Giaia&
+                -Gibib-Gicic-Gjaja-Gjbjb-Gjcjc-Gkaka-&
+                Gkbkb-Gkckc) )*pre1*pre2
+
+           do jab = jab_min,jab_max,2
+
+              if ( .not. (triangle(jtot1,jc,Jab))) cycle
+              if ((a==b) .and. (mod(Jab/2,2)==1)) cycle
+              do jij = jij_min, jij_max,2
+
+                 if ( .not. (triangle(jtot1,jk,jij))) cycle
+                 if ((i==j) .and. (mod(Jij/2,2)==1)) cycle
+                 w = EOM_scalar_commutator_223_single(H,Xdag,a,b,c,i,j,k,jtot1,jab,jij,jbas)
+
+                 sm = sm + w*w/denom/(rank+1.d0)
+
+              end do
+           end do
+
+           
+        end do
+     end do
+  end do
+  end do
+ !$OMP END PARALLEL DO 
+  scalar_triples = sm 
+
+end function scalar_triples
 !======================================================================================
 !======================================================================================
 subroutine unwrap_tensor( v, AX ,N ,jbas) 
@@ -852,8 +1150,8 @@ subroutine unwrap_iso_ladder( v, AX ,N ,jbas)
      do jx = 1,holes
         
         ii = jbas%parts(ix)
-        JJ = jbas%holes(jx) 
-  
+        JJ = jbas%holes(jx)   
+
         if (triangle(jbas%jj(II),jbas%jj(JJ),AX%rank)) then  
 
            if (jbas%itzp(II)-AX%dTz*2 .ne. jbas%itzp(JJ) ) cycle
@@ -912,8 +1210,8 @@ subroutine rewrap_iso_ladder( v, AX ,N ,jbas)
      do jx = 1,holes
         
         ii = jbas%parts(ix)
-        JJ = jbas%holes(jx) 
-  
+        JJ = jbas%holes(jx)   
+
         if (triangle(jbas%jj(II),jbas%jj(JJ),AX%rank)) then  
 
            if (jbas%itzp(II)-AX%dTz*2 .ne. jbas%itzp(JJ) ) cycle
@@ -942,7 +1240,7 @@ subroutine rewrap_iso_ladder( v, AX ,N ,jbas)
 
               if ( AX%tblck(q)%qn(2)%Y(JJ,1) == &
                    AX%tblck(q)%qn(2)%Y(JJ,2) ) cycle
-           end if
+           end if           
 
            v(i) = AX%tblck(q)%Xpphh(II,JJ)
            i = i + 1
@@ -1043,13 +1341,14 @@ end subroutine rewrap_tensor
 !======================================================
 !======================================================
 subroutine write_ladder_operators(AX,jbas) 
-  ! write the ladder operators to file in the playplace directory
+  ! first figure out how many equations there are:
+ 
   type(sq_op),dimension(:) :: AX 
   type(spd) :: jbas
   integer Atot,Ntot,q,i,numstates,neq
   real(8),allocatable,dimension(:):: outvec 
   character(200) :: prefix2,stringout
-  integer(c_int) :: rx,filehandle
+  type(c_ptr) :: rx,filehandle
   logical :: isthere
   
   numstates = size(AX)
@@ -1071,7 +1370,6 @@ subroutine write_ladder_operators(AX,jbas)
   do q = 1, numstates
      call rewrap_tensor(outvec((q-1)*neq+1:q*neq),AX(q),neq,jbas) 
   end do
-  
 
   filehandle = gzOpen(playplace//trim(adjustl(prefix2(1:i+6)))//&
        '_ladder.gz'//achar(0),'w'//achar(0)) 
@@ -1098,14 +1396,14 @@ end subroutine write_ladder_operators
 !======================================================
 !======================================================
 logical function read_ladder_operators(AX,jbas) 
-  ! read the ladder operators from file in the playplace directory
+ 
   type(sq_op),dimension(:) :: AX 
   type(spd) :: jbas
   integer Atot,Ntot,q,i,numstates,neq
   real(8),allocatable,dimension(:):: outvec 
   character(200) :: prefix2
   character(20) :: instring
-  integer(c_int) :: rx,filehandle
+  type(c_ptr) :: rx,filehandle
   logical :: isthere
   real(8) :: neq_float
   
@@ -1160,10 +1458,8 @@ logical function read_ladder_operators(AX,jbas)
   read_ladder_operators = .false. 
 
 end function read_ladder_operators
-!===============================================================================
-!===============================================================================
-real(8) function W_mscheme(p,mp,q,mq,r,mr,s,ms,t,mt,u,mu,MU_B,AA,BB,jbas)
-  ! for testing
+ 
+real(8) function W_mscheme(p,mp,q,mq,r,mr,s,ms,t,mt,u,mu,MU_B,AA,BB,jbas) 
   implicit none 
   
   type(spd) :: jbas
@@ -1255,8 +1551,7 @@ real(8) function W_mscheme(p,mp,q,mq,r,mr,s,ms,t,mt,u,mu,MU_B,AA,BB,jbas)
   W_mscheme = sm 
 
 end function W_mscheme
-!=====================================================================================
-!=====================================================================================
+  
 real(8)  function W_via_mscheme(p,q,r,s,t,u,j1,j2,Jpq,Jst,AA,BB,jbas) 
   implicit none 
   
@@ -1311,7 +1606,6 @@ end function W_via_mscheme
 !================================================
 !================================================
 integer function read_eom_file(trs,mom,eom_states,jbas)
-  ! read the inputs for the EOM calculation 
   implicit none
 
   type(spd) :: jbas
@@ -1319,20 +1613,14 @@ integer function read_eom_file(trs,mom,eom_states,jbas)
   type(obsv_mgr) :: trs,mom
   character(2) :: op,init,fin
   integer :: ist,num_trans,num_mom,i,num_jpi,N ,uniq
-  integer :: totstates
-  logical :: isthere
+  integer :: totstates,trips_int,resp_int
   
   N =jbas%total_orbits
   if (trim(INI_DIR) == './' ) then
-     inquire(file=trim(INI_DIR)//trim(eomfile),exist=isthere)
-     if (isthere) then 
-        open(unit=44,file=trim(INI_DIR)//trim(eomfile))
-     else
-        open(unit=44,file='../inifiles/'//trim(eomfile))        
-     end if
+     open(unit=44,file='../../inifiles/'//trim(eomfile))
   else
      open(unit=44,file=trim(INI_DIR)//trim(eomfile))
-  end if
+  end if 
   read(44,*);read(44,*);read(44,*)
   ! read transition types
   read(44,*) num_jpi
@@ -1345,6 +1633,7 @@ integer function read_eom_file(trs,mom,eom_states,jbas)
   allocate(eom_states%number_requested(num_jpi))
   totstates = 0 
   read(44,*)
+
   do i = 1, num_jpi
      read(44,*) eom_states%name(i),eom_states%dTz(i),eom_states%number_requested(i)
      read(eom_states%name(i)(1:1),'(I1)') eom_states%ang_mom(i)
@@ -1377,6 +1666,7 @@ integer function read_eom_file(trs,mom,eom_states,jbas)
   allocate(trs%Jpi2(num_trans))
 
   read(44,*)
+
   do i=1,num_trans
      read(44,*) trs%Jpi1(i),trs%Jpi2(i),trs%dtz(i)
   end do 
@@ -1386,8 +1676,9 @@ integer function read_eom_file(trs,mom,eom_states,jbas)
   mom%num = num_mom
 
   allocate(mom%Jpi1(num_mom))
-  allocate(mom%dTz(num_trans)) 
+  allocate(mom%dTz(num_mom)) 
   read(44,*)
+
   do i=1,num_mom
      read(44,*) mom%Jpi1(i),mom%dtz(i)
   end do 
@@ -1396,6 +1687,30 @@ integer function read_eom_file(trs,mom,eom_states,jbas)
   allocate(half6j(uniq)) 
   read_eom_file = totstates
 
+  read(44,*)
+  read(44,*) trips_int
+
+  if (trips_int == 1) then
+     eom_states%trips=.true.
+  else
+     eom_states%trips=.false.
+  end if
+
+  read(44,*)
+  read(44,*) resp_int
+
+  if (resp_int == 1) then
+     eom_states%response=.true.
+  else
+     eom_states%response=.false.
+  end if
+
+
+  close(44)
+
+  
 end function read_eom_file
 
+  
+  
 end module EOM_IMSRG

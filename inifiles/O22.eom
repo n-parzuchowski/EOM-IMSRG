@@ -1,21 +1,22 @@
 # EOM OBSERVABLE INPUT FILE###
 ##############################
 # ENTER NUMBER OF UNIQUE J-PI configs
-4
-# ENTER ALL JPi, dTz and number of states desired 
+2
+# ENTER ALL JPi,2dTz and number of states desired 
 2+,0,3
-3+,0,3
 1+,-1,3
-1+,1,3
 # ENTER OPERATOR (or 'none') (Only one at a time is feasible due to memory restrictions.) 
 E2
 # ENTER NUMBER OF UNIQUE TRANSTIONS (Calculated for all states of given quantum numbers) 
-2
-# ENTER TRANSITIONS (Initial,Final,dTz of initial) (GS for ground state) 
+1
+# ENTER TRANSITIONS (Initial Jpi, Final Jpi,  Inititial 2dTz)  (use GS for ground/reference state) 
 2+,GS,0
-3+,2+,0
 # ENTER NUMBER OF UNIQUE MOMENTS (Calculated for all states of given quantum numbers)
 2
-# ENTER MOMENTS,dTz 
+# ENTER MOMENTS   (Jpi,  2dTz) 
 2+,0
-3+,0
+1+,-1
+# ENTER "0" FOR STANDARD CALCULATION, "1" FOR TRIPLES
+0
+# ENTER "1" FOR RESPONSE FUNCTION CALCULATION, "0" OTHERWISE
+0

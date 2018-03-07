@@ -5,13 +5,12 @@ p1 = run_IMSRG
 p2 = get_HO_energies
 p3 = truncate
 
-FFLAGS = -O3 -openmp -mkl -lz ####${LIB_ARPCK}
+FFLAGS = -O3 -openmp -mkl -lz
 TFLAGS = -g -O0 -check bounds -openmp -mkl
 CXXFLAGS = -std=c++11 -O3
 
-LIB_ARPCK = -larpack
-### IF you don't have arpack installed on your system, you can download/make yourself, and link like so: 
-#LIB_ARPCK = /mnt/home/path/to/ARPACK/libarpack_SUN4.a
+LIBS =  -L/user/local/lib/ -llapack -lblas -lz 
+LIB_ARPCK = /mnt/home/parzuch6/nuclear_IMSRG/src/ARPACK/libarpack_SUN4.a
 
 
 obfiles = bin
@@ -49,6 +48,8 @@ dependencies.mk: $(F90SRC)
  
 -include dependencies.mk
 
+truncate: truncate_interaction.cpp
+	${CC} truncate_interaction.cpp -o ${p3}
 clean:
 	rm -f ${p1} $
 	rm -f ${p2} $
