@@ -2801,7 +2801,9 @@ subroutine duplicate_sq_op(H,op,dont)
   type(sq_op) :: H,op
   integer :: q,i,j,holes,parts,nh,np,nb,N,nh2,np2,nb2
   character(1), optional :: dont 
-  
+
+  if (allocated(op%fph)) return   
+
   op%herm = 1 ! default, change it in the calling program
              ! if you want anti-herm (-1) 
   op%Aprot = H%Aprot
@@ -4202,7 +4204,7 @@ subroutine write_tilde_from_Rcm(rr)
   
   type(sq_op) :: rr 
 
-  open(unit=53, file=OUTPUT_DIR//&
+  open(unit=53, file=trim(OUTPUT_DIR)//&
        trim(adjustl(prefix))//'_omegatilde.dat') 
   write(53,'(2(e14.6))') rr%hospace,&
        hbarc2_over_mc2*1.5d0/float(rr%Aprot+rr%Aneut)/rr%E0 

@@ -764,13 +764,12 @@ subroutine euler_step(G,DG,s,stp)
 end subroutine 
 !=====================================================
 !=====================================================
-subroutine restore_triples(H,OM,jbas,sm,smop,Op) 
+subroutine restore_triples(H,OM,jbas,sm) 
   implicit none 
   
   type(spd) :: jbas
   type(tpd),allocatable,dimension(:) :: threebas
   type(sq_op) :: H,OM
-  type(sq_op),optional :: Op
   integer :: a,b,c,i,j,k,Jtot,Jab,Jij,g1
   integer :: ja,jb,jc,ji,jj,jk,AAA,q
   integer :: ax,bx,cx,ix,jx,kx,III
@@ -782,13 +781,11 @@ subroutine restore_triples(H,OM,jbas,sm,smop,Op)
   real(8) :: sm,denom,dlow,w,pre1,pre2,wop,smop
   
   sm = 0.d0
-  smop = 0.d0 
   call enumerate_three_body(threebas,jbas)  
   total_threads = size(threebas(1)%direct_omp) - 1
 
 !$OMP PARALLEL DO DEFAULT(FIRSTPRIVATE) SHARED(threebas,jbas,H,OM) & 
-!$OMP& REDUCTION(+:sm)  REDUCTION(+:smop)
-  
+!$OMP& REDUCTION(+:sm)
   do thread = 1, total_threads
   do q = 1+threebas(1)%direct_omp(thread),&
        threebas(1)%direct_omp(thread+1)
@@ -893,11 +890,6 @@ subroutine restore_triples(H,OM,jbas,sm,smop,Op)
                  w = commutator_223_single(OM,H,a,b,c,i,j,k,Jtot,jab,jij,jbas)
 
                  sm = sm + w*w/denom*(Jtot+1.d0)
-
-                 if (present(Op)) then
-                    wop = 2.d0 * commutator_223_single(OM,Op,a,b,c,i,j,k,Jtot,jab,jij,jbas)
-                    smop=smop+ wop*w/denom*(Jtot+1.d0)
-                 end if
                  
               end do
            end do
@@ -906,7 +898,7 @@ subroutine restore_triples(H,OM,jbas,sm,smop,Op)
      end do
   end do
   end do 
- !$OMP END PARALLEL DO 
+!$OMP END PARALLEL DO 
 end subroutine restore_triples
 !================================================
 !================================================

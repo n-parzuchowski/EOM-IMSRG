@@ -46,8 +46,8 @@ subroutine compute_response_function(jbas,HS,OP)
   h = OP%belowEF !holes
   p = OP%Nsp-h  !particles
 
-  print*,
-  print*,
+  print*
+  print*
   print*, "==========================================="
   print*, " COMPUTING "//OP%trans_label//" RESPONSE FUNCTION FOR "&
        //nucleus_name(HS%Aneut,HS%Aprot)

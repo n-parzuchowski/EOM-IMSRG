@@ -250,14 +250,14 @@ call print_header
         print*, 'TRANSFORMING Hcm'
         call transform_observable_BCH(pipj,exp_omega,jbas,quads)
         call transform_observable_BCH(rirj,exp_omega,jbas,quads)
-        print*, 'CALCULTING Ecm' 
+        print*, 'CALCULATING Ecm' 
         call calculate_CM_energy(pipj,rirj) 
      end if 
      
      if (r2rms_calc) then
         print*, 'TRANSFORMING RADIUS'
         call transform_observable_BCH(r2_rms,exp_omega,jbas,quads)
-        call write_tilde_from_Rcm(r2_rms) 
+        print*, "SQRT[R_{rms}]:", sqrt(r2_rms%E0)
      end if
         
   case (2) ! traditional
@@ -295,9 +295,9 @@ call print_header
   if (trips == 'y') then 
      print*, 'computing triples'
      t1 = omp_get_wtime()
-     call restore_triples(H0,exp_omega,jbas,corr,corr_op) 
+     call restore_triples(H0,exp_omega,jbas,corr) 
      t2 = omp_get_wtime()
-     print*, 'FINAL ENERGY:', corr + HS%E0,t2-t1,HS%E0
+     print*, 'FINAL ENERGY:', corr + HS%E0
      open(unit=39,file=trim(OUTPUT_DIR)//&
        trim(adjustl(prefix))//'_magnus_triples.dat')
      write(39,'(2(e15.7))') HS%E0,HS%E0+corr
@@ -308,9 +308,9 @@ call print_header
      call duplicate_sq_op(H0,CR)         
      ! completely renormalized bit.
      call CR_EXPAND(CR,exp_omega,H0,jbas,quads) 
-     call restore_triples(CR,exp_omega,jbas,corr,corr_op)
+     call restore_triples(CR,exp_omega,jbas,corr)
      t2 = omp_get_wtime()
-     print*, 'FINAL ENERGY:', corr + HS%E0,t2-t1
+     print*, 'FINAL ENERGY:', corr + HS%E0
      open(unit=39,file=trim(OUTPUT_DIR)//&
        trim(adjustl(prefix))//'_magnus_cr_triples.dat')
      write(39,'(2(e15.7))') HS%E0,HS%E0+corr
@@ -323,7 +323,6 @@ call print_header
 91 if (ex_calc_int==1) then
      print*, 'STARTING EXCITED STATES CALCULATION'
      totstates=read_eom_file(trans,moments,eom_states,jbas)! total number of states
-     print*, totstates
      allocate(ladder_ops(totstates-eom_states%total_dTz))
      allocate(isoladder_ops(eom_states%total_dTz))     
      
